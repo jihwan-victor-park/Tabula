@@ -1,0 +1,35 @@
+{
+  "store_id": "store_d",
+  "store_name": "Little Adventurers",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "recommendations": [
+    {
+      "category": "educational_toys",
+      "action": "increase_stock",
+      "reasoning": "Strong rising market trend aligns with our goal to expand into nature-based educational toys. Spring season demands outdoor learning products, and we should capitalize on this opportunity with moderate signal strength and strong consensus.",
+      "confidence": 0.76,
+      "priority": "high"
+    },
+    {
+      "category": "outdoor_toys",
+      "action": "hold",
+      "reasoning": "Despite the moderate falling trend, our seasonal demand will spike soon. With limited warehouse space, we should maintain current stock until spring demand materializes, then reassess based on actual sales.",
+      "confidence": 0.68,
+      "priority": "medium"
+    },
+    {
+      "category": "board_games",
+      "action": "increase_stock",
+      "reasoning": "Strong rising trend with high consensus indicates sustained demand. Board games complement outdoor toys and can be promoted as rainy-day alternatives, aligning with our active play focus.",
+      "confidence": 0.71,
+      "priority": "medium"
+    },
+    {
+      "category": "craft_kits",
+      "action": "reduce_stock",
+      "reasoning": "Moderate falling trend suggests declining interest. Our limited warehouse space is better allocated to high-demand categories like educational toys and board games.",
+      "confidence": 0.65,
+      "priority": "low"
+    }
+  ]
+}

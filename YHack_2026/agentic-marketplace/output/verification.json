@@ -1,0 +1,52 @@
+{
+  "chain": "solana",
+  "network": "devnet",
+  "signals_on_chain": true,
+  "signal_count": 5,
+  "signals": [
+    {
+      "data_hash": "cae1b3b99b146debbe985267632d7bcf51abd3df976d1b42ef7a15f76479a6e9",
+      "label": "signals:store_a",
+      "tx_signature": "",
+      "verified": false,
+      "timestamp": 1774785321.975049
+    },
+    {
+      "data_hash": "3958aa1a87b26bdaed93ebddc793e22ca0af1cfbdec8f9b6ebe4acdd4b01a511",
+      "label": "signals:store_b",
+      "tx_signature": "",
+      "verified": false,
+      "timestamp": 1774785330.04015
+    },
+    {
+      "data_hash": "4e2ff3df88392829ab450b907114126e79059e4d9f29f966a2de66c3af3827bb",
+      "label": "signals:store_c",
+      "tx_signature": "",
+      "verified": false,
+      "timestamp": 1774785339.70919
+    },
+    {
+      "data_hash": "21029a7d9ae44290e96cba1aee3c06b75d69301e3ca26226a7e9290e502fd63d",
+      "label": "signals:store_d",
+      "tx_signature": "",
+      "verified": false,
+      "timestamp": 1774785348.183687
+    },
+    {
+      "data_hash": "8a2071f414f66fc7cbe52d72b73ba926fbbe2110d162f6c891092e40c1777b2e",
+      "label": "signals:store_e",
+      "tx_signature": "",
+      "verified": false,
+      "timestamp": 1774785356.543561
+    }
+  ],
+  "summary_on_chain": true,
+  "summary": {
+    "data_hash": "97909016b76db2b5e9897057719a2f831992e21521bdfe3f557c612e73adc75e",
+    "label": "debate_summary",
+    "tx_signature": "",
+    "verified": false,
+    "timestamp": 1774785386.550025
+  },
+  "all_verified": false
+}

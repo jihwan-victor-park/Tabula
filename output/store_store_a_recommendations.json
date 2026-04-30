@@ -1,0 +1,42 @@
+{
+  "store_id": "store_a",
+  "store_name": "ToyBox Haven",
+  "generated_at": "2026-03-29T02:39:34Z",
+  "recommendations": [
+    {
+      "category": "craft_kits",
+      "action": "increase_stock",
+      "reasoning": "Market shows rising trend with 0.685 strength and moderate consensus. Currently at 25 days supply which is high, but with only 1.0 daily sales, increasing stock could capitalize on the rising market trend to boost this underperforming category.",
+      "confidence": 0.75,
+      "priority": "high"
+    },
+    {
+      "category": "educational_toys",
+      "action": "increase_stock",
+      "reasoning": "Strong rising market trend (0.635 strength) with moderate consensus. Currently at 20 days supply and only 50% capacity utilization. Low daily sales of 1.5 units suggest opportunity to capture growing market demand.",
+      "confidence": 0.8,
+      "priority": "high"
+    },
+    {
+      "category": "dolls",
+      "action": "reduce_stock",
+      "reasoning": "Market trend is falling with 0.6 strength despite mixed consensus. This is one of our specialty categories with good sales (6.5 daily), but with limited storage constraints and falling market demand, reducing stock aligns with lean inventory goals.",
+      "confidence": 0.7,
+      "priority": "medium"
+    },
+    {
+      "category": "board_games",
+      "action": "increase_stock",
+      "reasoning": "Rising market trend (0.638 strength) with moderate consensus. Currently at 60% capacity with 17.1 days supply. Good daily sales of 3.5 units and rising market suggests opportunity to expand this category.",
+      "confidence": 0.72,
+      "priority": "medium"
+    },
+    {
+      "category": "puzzles",
+      "action": "promote",
+      "reasoning": "Owner previously expressed concern about slow-moving puzzle inventory. Market is stable but mixed consensus. At 22.5 days supply with low sales, promoting existing stock makes more sense than increasing inventory given storage constraints.",
+      "confidence": 0.65,
+      "priority": "low"
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "generated_at": "2026-03-29T02:39:34Z",
+  "scenario": "default",
+  "trends": [
+    {
+      "category": "puzzles",
+      "direction": "stable",
+      "strength": 0.515,
+      "signal_count": 5,
+      "consensus": "mixed"
+    },
+    {
+      "category": "craft_kits",
+      "direction": "rising",
+      "strength": 0.685,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "board_games",
+      "direction": "rising",
+      "strength": 0.638,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "dolls",
+      "direction": "falling",
+      "strength": 0.6,
+      "signal_count": 4,
+      "consensus": "mixed"
+    },
+    {
+      "category": "lego_sets",
+      "direction": "rising",
+      "strength": 0.558,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "outdoor_toys",
+      "direction": "stable",
+      "strength": 0.487,
+      "signal_count": 5,
+      "consensus": "mixed"
+    },
+    {
+      "category": "educational_toys",
+      "direction": "rising",
+      "strength": 0.635,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "action_figures",
+      "direction": "stable",
+      "strength": 0.374,
+      "signal_count": 5,
+      "consensus": "strong"
+    },
+    {
+      "category": "video_games",
+      "direction": "stable",
+      "strength": 0.451,
+      "signal_count": 5,
+      "consensus": "mixed"
+    },
+    {
+      "category": "books_comics",
+      "direction": "stable",
+      "strength": 0.455,
+      "signal_count": 5,
+      "consensus": "strong"
+    }
+  ]
+}

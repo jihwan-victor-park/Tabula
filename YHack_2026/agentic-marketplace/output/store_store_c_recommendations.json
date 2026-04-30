@@ -1,0 +1,35 @@
+{
+  "store_id": "store_c",
+  "store_name": "GameVault",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "recommendations": [
+    {
+      "category": "board_games",
+      "action": "increase_stock",
+      "reasoning": "Board games are rising in demand (strong trend) and align with your successful game nights that drive foot traffic. Increasing stock can capitalize on this momentum and support your community hub goal.",
+      "confidence": 0.92,
+      "priority": "high"
+    },
+    {
+      "category": "action_figures",
+      "action": "increase_stock",
+      "reasoning": "Action figures are rising in demand (strong trend) and fit your collectibles expansion goal. This category has high turnover potential, which suits your cash flow constraints.",
+      "confidence": 0.88,
+      "priority": "high"
+    },
+    {
+      "category": "lego_sets",
+      "action": "increase_stock",
+      "reasoning": "LEGO sets are rising in demand (strong trend) and can attract both collectors and families. They complement your collectibles strategy and have broad appeal.",
+      "confidence": 0.85,
+      "priority": "medium"
+    },
+    {
+      "category": "video_games",
+      "action": "hold",
+      "reasoning": "Video games are stable (moderate trend) and serve as your reliable revenue stream. Maintain current stock levels to ensure consistent sales without overinvesting during uncertain times.",
+      "confidence": 0.78,
+      "priority": "low"
+    }
+  ]
+}

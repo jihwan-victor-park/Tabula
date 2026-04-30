@@ -1,0 +1,35 @@
+{
+  "store_id": "store_b",
+  "store_name": "BrainPlay Emporium",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "recommendations": [
+    {
+      "category": "STEM_kits",
+      "action": "increase_stock",
+      "reasoning": "STEM kits are flying off the shelves per owner notes, and educational toys are rising in market demand. Increasing stock aligns with store goals to expand STEM offerings despite limited floor space.",
+      "confidence": 0.95,
+      "priority": "high"
+    },
+    {
+      "category": "dolls",
+      "action": "discontinue",
+      "reasoning": "Dolls have low margins per owner notes and are falling in market demand. Discontinuing aligns with store goals to focus on educational toys and frees up space.",
+      "confidence": 0.9,
+      "priority": "medium"
+    },
+    {
+      "category": "lego_sets",
+      "action": "increase_stock",
+      "reasoning": "Lego sets have strong rising market demand and fit the educational toy niche. Increasing stock supports store goals to dominate this category.",
+      "confidence": 0.85,
+      "priority": "medium"
+    },
+    {
+      "category": "craft_kits",
+      "action": "reduce_stock",
+      "reasoning": "Craft kits are falling in market demand. Reducing stock helps optimize limited floor space and margin, aligning with store constraints and goals.",
+      "confidence": 0.8,
+      "priority": "low"
+    }
+  ]
+}

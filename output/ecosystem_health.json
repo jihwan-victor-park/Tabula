@@ -1,0 +1,43 @@
+{
+  "cycle_id": "cycle_20250329_001",
+  "generated_at": "2025-03-29T02:00:00Z",
+  "hex_enabled": false,
+  "overall_health": 78.4,
+  "consensus_strength": 0.82,
+  "signal_diversity": 0.31,
+  "anomaly_count": 2,
+  "anomalous_signals": [
+    {
+      "signal_id": "a3f82b91",
+      "category": "prepared_foods",
+      "intensity": 0.95,
+      "z_score": 2.41,
+      "category_mean": 0.62,
+      "category_std": 0.137,
+      "flag": "outlier"
+    },
+    {
+      "signal_id": "d7c10e43",
+      "category": "vintage_apparel",
+      "intensity": 0.12,
+      "z_score": 2.18,
+      "category_mean": 0.58,
+      "category_std": 0.211,
+      "flag": "outlier"
+    }
+  ],
+  "collaboration_value": 34.7,
+  "category_alignment": {
+    "prepared_foods": 0.88,
+    "snacks_beverages": 0.92,
+    "vintage_apparel": 0.72,
+    "gift_baskets": 0.95,
+    "custom_jewelry": 0.81,
+    "artisan_goods": 0.78,
+    "international_cuisine": 0.85,
+    "books_stationery": 0.90
+  },
+  "participation_rate": 100.0,
+  "hex_run_id": null,
+  "hex_run_url": null
+}

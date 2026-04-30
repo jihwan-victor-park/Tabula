@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClawBot — Database Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --surface2: #1c1c1c;
+      --border: #272727;
+      --text: #e8e8e8;
+      --muted: #666;
+      --green: #4ade80;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --blue: #60a5fa;
+      --purple: #c084fc;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 17px; font-weight: 700; }
+    header .subtitle { font-size: 12px; color: var(--muted); margin-left: auto; }
+    .mongo-badge {
+      background: #0f3d0f;
+      color: var(--green);
+      border: 1px solid #166534;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 2px;
+      padding: 12px 24px 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .tab {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--green); border-bottom-color: var(--green); }
+    .tab .count {
+      display: inline-block;
+      background: var(--surface2);
+      border-radius: 99px;
+      font-size: 10px;
+      padding: 1px 6px;
+      margin-left: 5px;
+      color: var(--muted);
+    }
+    .tab.active .count { background: #052e16; color: var(--green); }
+
+    /* ── Content ── */
+    .panel { display: none; padding: 20px 24px; }
+    .panel.active { display: block; }
+
+    /* ── Stats row ── */
+    .stats {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      min-width: 120px;
+    }
+    .stat .val { font-size: 24px; font-weight: 800; }
+    .stat .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .stat.red .val { color: var(--red); }
+    .stat.green .val { color: var(--green); }
+    .stat.yellow .val { color: var(--yellow); }
+    .stat.blue .val { color: var(--blue); }
+
+    /* ── Search ── */
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .search-bar input {
+      flex: 1;
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+    .search-bar input:focus { border-color: var(--green); }
+    .refresh-btn {
+      padding: 8px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .refresh-btn:hover { color: var(--text); border-color: var(--green); }
+
+    /* ── Table ── */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      background: var(--surface2);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface); }
+    td {
+      padding: 10px 14px;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .mono { font-family: monospace; font-size: 12px; color: var(--muted); }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-green  { background: #052e16; color: var(--green); }
+    .badge-red    { background: #2d0b0b; color: var(--red); }
+    .badge-yellow { background: #1c1400; color: var(--yellow); }
+    .badge-blue   { background: #0c1f3d; color: var(--blue); }
+    .badge-purple { background: #1a0a2e; color: var(--purple); }
+    .badge-gray   { background: var(--surface2); color: var(--muted); }
+
+    /* Stock bar */
+    .stock-bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+    .stock-bar-bg {
+      flex: 1; height: 6px; background: var(--surface2);
+      border-radius: 99px; overflow: hidden;
+    }
+    .stock-bar-fill { height: 100%; border-radius: 99px; transition: width 0.3s; }
+
+    /* ── Empty ── */
+    .empty { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; }
+
+    /* ── Loading spinner ── */
+    .loading { text-align: center; padding: 40px; color: var(--muted); }
+    .spinner {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .doc-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:20px">🐾</span>
+  <h1>ClawBot Database Dashboard</h1>
+  <span class="mongo-badge">MongoDB Atlas</span>
+  <span class="subtitle" id="last-refresh"></span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('inventory')">Inventory <span class="count" id="c-inventory">—</span></div>
+  <div class="tab" onclick="switchTab('transactions')">Transactions <span class="count" id="c-transactions">—</span></div>
+  <div class="tab" onclick="switchTab('sales')">Sales <span class="count" id="c-sales">—</span></div>
+  <div class="tab" onclick="switchTab('price')">Price Watchlist <span class="count" id="c-price">—</span></div>
+  <div class="tab" onclick="switchTab('alerts')">Alerts <span class="count" id="c-alerts">—</span></div>
+  <div class="tab" onclick="switchTab('procurement')">Procurement <span class="count" id="c-procurement">—</span></div>
+  <div class="tab" onclick="switchTab('suppliers')">Suppliers <span class="count" id="c-suppliers">—</span></div>
+</div>
+
+<!-- ── INVENTORY ── -->
+<div class="panel active" id="panel-inventory">
+  <div class="stats">
+    <div class="stat green"><div class="val" id="s-total">—</div><div class="lbl">Total Items</div></div>
+    <div class="stat red"><div class="val" id="s-low">—</div><div class="lbl">Low Stock</div></div>
+    <div class="stat red"><div class="val" id="s-out">—</div><div class="lbl">Out of Stock</div></div>
+    <div class="stat blue"><div class="val" id="s-cats">—</div><div class="lbl">Categories</div></div>
+  </div>
+  <div class="search-bar">
+    <input type="text" placeholder="Search items…" oninput="filterTable('tbl-inventory', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-inventory">
+      <thead><tr>
+        <th>Barcode</th><th>Name</th><th>Brand</th><th>Category</th>
+        <th>Stock</th><th>Reorder</th><th>Sell Price</th><th>Status</th><th>Updated</th>
+      </tr></thead>
+      <tbody id="body-inventory"><tr><td colspan="9" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── TRANSACTIONS ── -->
+<div class="panel" id="panel-transactions">
+  <div class="search-bar">
+    <input type="text" placeholder="Search transactions…" oninput="filterTable('tbl-transactions', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-transactions">
+      <thead><tr>
+        <th>Time</th><th>Item ID</th><th>Change</th><th>Reason</th><th>Notes</th>
+      </tr></thead>
+      <tbody id="body-transactions"><tr><td colspan="5" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── SALES ── -->
+<div class="panel" id="panel-sales">
+  <div class="stats">
+    <div class="stat green"><div class="val" id="s-sales-total">—</div><div class="lbl">Records</div></div>
+    <div class="stat blue"><div class="val" id="s-sales-revenue">—</div><div class="lbl">Total Revenue</div></div>
+    <div class="stat yellow"><div class="val" id="s-sales-units">—</div><div class="lbl">Units Sold</div></div>
+  </div>
+  <div class="search-bar">
+    <input type="text" placeholder="Search sales…" oninput="filterTable('tbl-sales', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-sales">
+      <thead><tr>
+        <th>Date</th><th>SKU</th><th>Product</th><th>Category</th><th>Qty</th><th>Unit Price</th><th>Revenue</th>
+      </tr></thead>
+      <tbody id="body-sales"><tr><td colspan="7" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── PRICE WATCHLIST ── -->
+<div class="panel" id="panel-price">
+  <div class="search-bar">
+    <input type="text" placeholder="Search watchlist…" oninput="filterTable('tbl-price', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-price">
+      <thead><tr>
+        <th>Label</th><th>Mode</th><th>Status</th><th>Baseline Supplier</th>
+        <th>Baseline Price</th><th>Threshold</th><th>Last Scan</th>
+      </tr></thead>
+      <tbody id="body-price"><tr><td colspan="7" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── ALERTS ── -->
+<div class="panel" id="panel-alerts">
+  <div class="search-bar">
+    <input type="text" placeholder="Search alerts…" oninput="filterTable('tbl-alerts', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-alerts">
+      <thead><tr>
+        <th>Created</th><th>Summary</th><th>Baseline</th><th>Best Price</th><th>Delta</th><th>Status</th>
+      </tr></thead>
+      <tbody id="body-alerts"><tr><td colspan="6" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── PROCUREMENT ── -->
+<div class="panel" id="panel-procurement">
+  <div class="search-bar">
+    <input type="text" placeholder="Search procurement…" oninput="filterTable('tbl-procurement', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-procurement">
+      <thead><tr>
+        <th>Item</th><th>Qty Needed</th><th>Budget/Unit</th><th>Status</th><th>Last Sourced</th><th>Notes</th>
+      </tr></thead>
+      <tbody id="body-procurement"><tr><td colspan="6" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── SUPPLIERS ── -->
+<div class="panel" id="panel-suppliers">
+  <div class="search-bar">
+    <input type="text" placeholder="Search suppliers…" oninput="filterTable('tbl-suppliers', this.value)" />
+    <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
+  </div>
+  <div class="table-wrap">
+    <table id="tbl-suppliers">
+      <thead><tr>
+        <th>Name</th><th>Categories</th><th>Email</th><th>Phone</th><th>Status</th><th>Notes</th>
+      </tr></thead>
+      <tbody id="body-suppliers"><tr><td colspan="6" class="loading"><span class="spinner"></span>Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const BASE = window.location.origin;
+  const H = { 'ngrok-skip-browser-warning': 'true' };
+  const fmt$ = v => v != null ? `$${Number(v).toFixed(2)}` : '—';
+  const fmtDate = s => s ? s.replace('T', ' ').replace('Z', '') : '—';
+  const esc = s => String(s ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // Tab switching
+  function switchTab(name) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      const names = ['inventory','transactions','sales','price','alerts','procurement','suppliers'];
+      t.classList.toggle('active', names[i] === name);
+    });
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+  }
+
+  // Row filtering
+  function filterTable(tableId, query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll(`#${tableId} tbody tr`).forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+
+  // Stock badge + bar
+  function stockCell(qty, reorder) {
+    const pct = reorder > 0 ? Math.min(100, (qty / (reorder * 3)) * 100) : 100;
+    const color = qty === 0 ? '#f87171' : qty <= reorder ? '#fbbf24' : '#4ade80';
+    return `<div class="stock-bar-wrap">
+      <span style="font-weight:700;color:${color};min-width:28px">${qty}</span>
+      <div class="stock-bar-bg"><div class="stock-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+    </div>`;
+  }
+
+  function statusBadge(qty, reorder) {
+    if (qty === 0) return `<span class="badge badge-red">Out of Stock</span>`;
+    if (qty <= reorder) return `<span class="badge badge-yellow">Low Stock</span>`;
+    return `<span class="badge badge-green">In Stock</span>`;
+  }
+
+  function changeBadge(n) {
+    const s = n > 0 ? `+${n}` : `${n}`;
+    const cls = n > 0 ? 'badge-green' : 'badge-red';
+    return `<span class="badge ${cls}">${s}</span>`;
+  }
+
+  // ── Load all ──
+  async function loadAll() {
+    document.getElementById('last-refresh').textContent =
+      'Refreshed ' + new Date().toLocaleTimeString();
+    await Promise.all([
+      loadInventory(), loadTransactions(), loadSales(),
+      loadPrice(), loadAlerts(), loadProcurement(), loadSuppliers()
+    ]);
+  }
+
+  async function fetchJSON(path) {
+    const r = await fetch(BASE + path, { headers: H });
+    return r.json();
+  }
+
+  // ── Inventory ──
+  async function loadInventory() {
+    const data = await fetchJSON('/db/inventory');
+    document.getElementById('c-inventory').textContent = data.length;
+    const low = data.filter(d => d.quantity <= d.reorder_point);
+    const out = data.filter(d => d.quantity === 0);
+    const cats = new Set(data.map(d => d.category).filter(Boolean));
+    document.getElementById('s-total').textContent = data.length;
+    document.getElementById('s-low').textContent = low.length;
+    document.getElementById('s-out').textContent = out.length;
+    document.getElementById('s-cats').textContent = cats.size;
+
+    const rows = data.map(d => `<tr>
+      <td class="mono">${esc(d.id)}</td>
+      <td style="font-weight:600">${esc(d.name)}</td>
+      <td>${esc(d.brand ?? '—')}</td>
+      <td><span class="badge badge-blue">${esc(d.category ?? '—')}</span></td>
+      <td>${stockCell(d.quantity, d.reorder_point)}</td>
+      <td style="color:var(--muted)">${d.reorder_point}</td>
+      <td>${fmt$(d.sell_price)}</td>
+      <td>${statusBadge(d.quantity, d.reorder_point)}</td>
+      <td class="mono" style="color:var(--muted)">${fmtDate(d.last_updated)}</td>
+    </tr>`).join('') || '<tr><td colspan="9" class="empty">No items</td></tr>';
+    document.getElementById('body-inventory').innerHTML = rows;
+  }
+
+  // ── Transactions ──
+  async function loadTransactions() {
+    const data = await fetchJSON('/db/transactions');
+    document.getElementById('c-transactions').textContent = data.length;
+    const rows = data.map(d => `<tr>
+      <td class="mono">${fmtDate(d.recorded_at)}</td>
+      <td class="mono">${esc(d.item_id)}</td>
+      <td>${changeBadge(d.quantity_change)}</td>
+      <td><span class="badge badge-purple">${esc(d.reason)}</span></td>
+      <td style="color:var(--muted)">${esc(d.notes ?? '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">No transactions</td></tr>';
+    document.getElementById('body-transactions').innerHTML = rows;
+  }
+
+  // ── Sales ──
+  async function loadSales() {
+    const data = await fetchJSON('/db/sales');
+    document.getElementById('c-sales').textContent = data.length;
+    let revenue = 0, units = 0;
+    data.forEach(d => { revenue += (d.quantity_sold * d.unit_price); units += d.quantity_sold; });
+    document.getElementById('s-sales-total').textContent = data.length;
+    document.getElementById('s-sales-revenue').textContent = '$' + revenue.toFixed(0);
+    document.getElementById('s-sales-units').textContent = units;
+
+    const rows = data.map(d => `<tr>
+      <td class="mono">${esc(d.sale_date)}</td>
+      <td class="mono">${esc(d.sku)}</td>
+      <td style="font-weight:600">${esc(d.product_name)}</td>
+      <td><span class="badge badge-blue">${esc(d.category)}</span></td>
+      <td style="text-align:right">${d.quantity_sold}</td>
+      <td>${fmt$(d.unit_price)}</td>
+      <td style="color:var(--green)">${fmt$(d.quantity_sold * d.unit_price)}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="empty">No sales</td></tr>';
+    document.getElementById('body-sales').innerHTML = rows;
+  }
+
+  // ── Price watchlist ──
+  async function loadPrice() {
+    const data = await fetchJSON('/db/price-watchlist');
+    document.getElementById('c-price').textContent = data.length;
+    const rows = data.map(d => `<tr>
+      <td style="font-weight:600">${esc(d.label)}</td>
+      <td><span class="badge badge-purple">${esc(d.mode)}</span></td>
+      <td>${d.active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</td>
+      <td>${esc(d.baseline?.supplier ?? '—')}</td>
+      <td>${fmt$(d.baseline?.price)}</td>
+      <td style="color:var(--yellow)">${d.threshold_pct ?? '—'}%</td>
+      <td class="mono" style="color:var(--muted)">${fmtDate(d.last_scan_at)}</td>
+    </tr>`).join('') || '<tr><td colspan="7" class="empty">No watch items</td></tr>';
+    document.getElementById('body-price').innerHTML = rows;
+  }
+
+  // ── Alerts ──
+  async function loadAlerts() {
+    const data = await fetchJSON('/db/price-alerts');
+    document.getElementById('c-alerts').textContent = data.length;
+    const rows = data.map(d => `<tr>
+      <td class="mono">${fmtDate(d.created_at)}</td>
+      <td class="doc-cell">${esc(d.summary ?? '—')}</td>
+      <td>${fmt$(d.baseline?.price)}</td>
+      <td style="color:var(--green)">${fmt$(d.best_option?.price)}</td>
+      <td><span class="badge ${d.delta_pct < 0 ? 'badge-green' : 'badge-red'}">${d.delta_pct?.toFixed(1) ?? '—'}%</span></td>
+      <td>${d.status === 'new' ? '<span class="badge badge-yellow">New</span>' : '<span class="badge badge-gray">Acknowledged</span>'}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No alerts</td></tr>';
+    document.getElementById('body-alerts').innerHTML = rows;
+  }
+
+  // ── Procurement ──
+  async function loadProcurement() {
+    const data = await fetchJSON('/db/procurement');
+    document.getElementById('c-procurement').textContent = data.length;
+    const rows = data.map(d => `<tr>
+      <td style="font-weight:600">${esc(d.name)}</td>
+      <td style="text-align:right">${d.quantity_needed}</td>
+      <td>${fmt$(d.budget_per_unit)}</td>
+      <td>${d.active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</td>
+      <td class="mono" style="color:var(--muted)">${fmtDate(d.last_sourced_at)}</td>
+      <td style="color:var(--muted)">${esc(d.notes ?? '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No procurement items</td></tr>';
+    document.getElementById('body-procurement').innerHTML = rows;
+  }
+
+  // ── Suppliers ──
+  async function loadSuppliers() {
+    const data = await fetchJSON('/db/suppliers');
+    document.getElementById('c-suppliers').textContent = data.length;
+    const rows = data.map(d => `<tr>
+      <td style="font-weight:600">${esc(d.name)}</td>
+      <td>${(d.categories ?? []).map(c => `<span class="badge badge-blue" style="margin-right:3px">${esc(c)}</span>`).join('')}</td>
+      <td class="mono">${esc(d.contact_email ?? '—')}</td>
+      <td class="mono">${esc(d.contact_phone ?? '—')}</td>
+      <td>${d.active ? '<span class="badge badge-green">Active</span>' : '<span class="badge badge-gray">Inactive</span>'}</td>
+      <td class="doc-cell" style="color:var(--muted)">${esc(d.notes ?? '—')}</td>
+    </tr>`).join('') || '<tr><td colspan="6" class="empty">No suppliers</td></tr>';
+    document.getElementById('body-suppliers').innerHTML = rows;
+  }
+
+  loadAll();
+  // Auto-refresh every 10 seconds
+  setInterval(loadAll, 10000);
+</script>
+</body>
+</html>

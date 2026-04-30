@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "owner": {
+    "channel": "imessage",
+    "target": "+18584019272"
+  },
+  "monitoring": {
+    "enabled": true,
+    "defaultSavingsThresholdPct": 5,
+    "maxItemsPerRun": 2,
+    "minHoursBetweenAlerts": 24,
+    "maxFindingAgeHours": 168
+  }
+}

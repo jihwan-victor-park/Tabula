@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>ClawBot — Barcode Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #f0f0f0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 16px 20px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-btn {
+      margin-left: auto;
+      padding: 7px 13px;
+      background: transparent;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      color: #888;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+    }
+    .nav-btn:hover { border-color: #4ade80; color: #4ade80; }
+
+    header .logo { font-size: 22px; }
+    header h1 { font-size: 18px; font-weight: 700; color: #fff; }
+    header p  { font-size: 12px; color: #888; }
+
+    #viewfinder-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      margin: 16px auto 0;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #reader {
+      width: 100%;
+    }
+
+    /* Override html5-qrcode default styles */
+    #reader video { border-radius: 12px; }
+    #reader__scan_region { border-radius: 12px; }
+
+    .scan-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .scan-frame {
+      width: 220px;
+      height: 140px;
+      border: 2.5px solid #4ade80;
+      border-radius: 10px;
+      box-shadow: 0 0 0 2000px rgba(0,0,0,0.35);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { border-color: #4ade80; }
+      50%       { border-color: #86efac; }
+    }
+
+    #hint {
+      text-align: center;
+      color: #888;
+      font-size: 13px;
+      padding: 10px 20px;
+      margin-top: 4px;
+    }
+
+    /* Result card */
+    #result-card {
+      display: none;
+      margin: 16px 16px 0;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      overflow: hidden;
+    }
+
+    #result-card.show { display: block; }
+
+    .card-header {
+      padding: 14px 16px;
+      background: #111;
+      border-bottom: 1px solid #2a2a2a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-header .item-img {
+      width: 52px;
+      height: 52px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #2a2a2a;
+    }
+
+    .card-header .item-info { flex: 1; }
+    .card-header .item-name { font-weight: 700; font-size: 15px; }
+    .card-header .item-brand { font-size: 12px; color: #888; margin-top: 2px; }
+    .card-header .item-barcode { font-size: 11px; color: #555; font-family: monospace; margin-top: 2px; }
+
+    .card-body { padding: 14px 16px; }
+
+    .stock-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #222;
+    }
+
+    .stock-row:last-child { border-bottom: none; }
+
+    .stock-label { font-size: 13px; color: #888; }
+    .stock-value { font-size: 15px; font-weight: 700; }
+
+    .stock-value.low { color: #f87171; }
+    .stock-value.ok  { color: #4ade80; }
+
+    /* Quantity stepper */
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      border: 1px solid #3a3a3a;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .stepper button {
+      background: #222;
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      width: 44px;
+      height: 44px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .stepper button:active { background: #333; }
+    .stepper input {
+      background: #111;
+      border: none;
+      border-left: 1px solid #3a3a3a;
+      border-right: 1px solid #3a3a3a;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      text-align: center;
+      width: 60px;
+      height: 44px;
+      outline: none;
+    }
+
+    .reason-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .reason-btn {
+      flex: 1;
+      min-width: 80px;
+      padding: 8px 10px;
+      border: 1px solid #3a3a3a;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #aaa;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+    }
+
+    .reason-btn.active {
+      border-color: #4ade80;
+      background: #052e16;
+      color: #4ade80;
+    }
+
+    .confirm-btn {
+      margin-top: 14px;
+      width: 100%;
+      padding: 14px;
+      background: #16a34a;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .confirm-btn:active { background: #15803d; }
+    .confirm-btn:disabled { background: #2a2a2a; color: #555; cursor: not-allowed; }
+
+    .scan-again-btn {
+      margin: 10px 16px 0;
+      width: calc(100% - 32px);
+      padding: 12px;
+      background: transparent;
+      color: #4ade80;
+      border: 1px solid #4ade80;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+    }
+
+    .scan-again-btn.show { display: block; }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #1f2937;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      opacity: 0;
+      transition: all 0.3s ease;
+      z-index: 999;
+      white-space: nowrap;
+      border: 1px solid #374151;
+    }
+
+    #toast.success { background: #052e16; border-color: #166534; color: #4ade80; }
+    #toast.error   { background: #2d0b0b; border-color: #7f1d1d; color: #f87171; }
+    #toast.show    { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    #new-item-form { display: none; }
+    #new-item-form.show { display: block; }
+
+    .form-field { margin-bottom: 12px; }
+    .form-field label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+    .form-field input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .form-field input:focus { border-color: #4ade80; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge.new { background: #1d4ed8; color: #bfdbfe; }
+    .badge.low { background: #7f1d1d; color: #fca5a5; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🐾</div>
+  <div>
+    <h1>ClawBot Scanner</h1>
+    <p>Scan a barcode to update inventory</p>
+  </div>
+  <a class="nav-btn" href="/display">Inventory Display →</a>
+</header>
+
+<div id="viewfinder-wrap">
+  <div id="reader"></div>
+  <div class="scan-overlay">
+    <div class="scan-frame"></div>
+  </div>
+</div>
+
+<p id="hint">Point your camera at a barcode</p>
+
+<!-- Result card: known item -->
+<div id="result-card">
+  <div class="card-header">
+    <img id="item-img" class="item-img" src="" alt="" onerror="this.style.display='none'" />
+    <div class="item-info">
+      <div class="item-name" id="item-name">—</div>
+      <div class="item-brand" id="item-brand"></div>
+      <div class="item-barcode" id="item-barcode"></div>
+      <span id="new-badge" class="badge new" style="display:none;margin-top:4px">NEW ITEM</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="stock-row">
+      <span class="stock-label">Current stock</span>
+      <span class="stock-value" id="item-qty">—</span>
+    </div>
+    <div class="stock-row">
+      <span class="stock-label">Reorder point</span>
+      <span class="stock-value" id="item-reorder">—</span>
+    </div>
+    <div class="stock-row">
+      <span class="stock-label">Category</span>
+      <span class="stock-value" id="item-cat">—</span>
+    </div>
+
+    <!-- New item fields (shown only for unknown barcodes) -->
+    <div id="new-item-form">
+      <div class="form-field" style="margin-top:12px">
+        <label>Product Name *</label>
+        <input type="text" id="new-name" placeholder="e.g. Monopoly Classic" />
+      </div>
+      <div class="form-field">
+        <label>Brand</label>
+        <input type="text" id="new-brand" placeholder="e.g. Hasbro" />
+      </div>
+      <div class="form-field">
+        <label>Category</label>
+        <input type="text" id="new-category" placeholder="e.g. Board Games" />
+      </div>
+      <div class="form-field">
+        <label>Sell Price (USD)</label>
+        <input type="number" id="new-price" placeholder="0.00" step="0.01" min="0" />
+      </div>
+    </div>
+
+    <div class="stock-row" style="margin-top:8px">
+      <span class="stock-label">Quantity change</span>
+      <div class="stepper">
+        <button id="btn-minus" onclick="changeQty(-1)">−</button>
+        <input type="number" id="qty-input" value="1" min="-999" max="999" />
+        <button id="btn-plus" onclick="changeQty(1)">+</button>
+      </div>
+    </div>
+
+    <div class="reason-row">
+      <button class="reason-btn active" data-reason="scan" onclick="setReason(this)">Scan</button>
+      <button class="reason-btn" data-reason="restock" onclick="setReason(this)">Restock</button>
+      <button class="reason-btn" data-reason="sale" onclick="setReason(this)">Sale</button>
+      <button class="reason-btn" data-reason="adjustment" onclick="setReason(this)">Adjust</button>
+    </div>
+
+    <button class="confirm-btn" id="confirm-btn" onclick="submitScan()">Update Inventory</button>
+  </div>
+</div>
+
+<button class="scan-again-btn" id="scan-again-btn" onclick="scanAgain()">Scan another item</button>
+
+<div id="toast"></div>
+
+<script>
+  const BASE = window.location.origin;
+  const HEADERS = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' };
+  let currentBarcode = null;
+  let isNewItem = false;
+  let selectedReason = 'scan';
+  let scanner = null;
+  let scanning = true;
+
+  // ---------------------------------------------------------------------------
+  // Scanner init
+  // ---------------------------------------------------------------------------
+  function startScanner() {
+    scanner = new Html5Qrcode("reader");
+    const config = {
+      fps: 10,
+      qrbox: { width: 220, height: 140 },
+      supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.ITF,
+      ],
+    };
+
+    scanner.start(
+      { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      () => {}
+    ).catch(err => {
+      document.getElementById('hint').textContent = "Camera error: " + err;
+    });
+  }
+
+  startScanner();
+
+  // ---------------------------------------------------------------------------
+  // On barcode detected
+  // ---------------------------------------------------------------------------
+  async function onScanSuccess(barcode) {
+    if (!scanning) return;
+    scanning = false;
+
+    document.getElementById('hint').textContent = "Barcode: " + barcode;
+    currentBarcode = barcode;
+
+    // Pause scanner
+    try { await scanner.pause(true); } catch(e) {}
+
+    // Look up item
+    try {
+      const res = await fetch(`${BASE}/items/${encodeURIComponent(barcode)}`, { headers: HEADERS });
+      if (res.ok) {
+        const item = await res.json();
+        showKnownItem(item);
+      } else {
+        // Unknown barcode — try external lookup
+        const res2 = await fetch(`${BASE}/barcode/${encodeURIComponent(barcode)}`, { headers: HEADERS });
+        const lookup = res2.ok ? await res2.json() : null;
+        showNewItem(barcode, lookup);
+      }
+    } catch(e) {
+      showNewItem(barcode, null);
+    }
+  }
+
+  function showKnownItem(item) {
+    isNewItem = false;
+    document.getElementById('new-item-form').classList.remove('show');
+    document.getElementById('new-badge').style.display = 'none';
+
+    document.getElementById('item-name').textContent = item.name;
+    document.getElementById('item-brand').textContent = item.brand || '';
+    document.getElementById('item-barcode').textContent = item.id;
+    document.getElementById('item-cat').textContent = item.category || '—';
+
+    const qtyEl = document.getElementById('item-qty');
+    qtyEl.textContent = item.quantity;
+    qtyEl.className = 'stock-value ' + (item.quantity <= item.reorder_point ? 'low' : 'ok');
+    document.getElementById('item-reorder').textContent = item.reorder_point;
+
+    const img = document.getElementById('item-img');
+    if (item.image_url) { img.src = item.image_url; img.style.display = ''; }
+    else { img.style.display = 'none'; }
+
+    document.getElementById('qty-input').value = 1;
+    document.getElementById('result-card').classList.add('show');
+    document.getElementById('scan-again-btn').classList.add('show');
+  }
+
+  function showNewItem(barcode, lookup) {
+    isNewItem = true;
+    document.getElementById('new-item-form').classList.add('show');
+    document.getElementById('new-badge').style.display = 'inline-block';
+
+    const name = lookup?.name || '';
+    document.getElementById('item-name').textContent = name || 'Unknown item';
+    document.getElementById('item-brand').textContent = lookup?.brand || '';
+    document.getElementById('item-barcode').textContent = barcode;
+    document.getElementById('item-cat').textContent = lookup?.category || '—';
+    document.getElementById('item-qty').textContent = '0';
+    document.getElementById('item-reorder').textContent = '5';
+    document.getElementById('item-img').style.display = 'none';
+
+    if (name) document.getElementById('new-name').value = name;
+    if (lookup?.brand) document.getElementById('new-brand').value = lookup.brand;
+    if (lookup?.category) document.getElementById('new-category').value = lookup.category;
+    if (lookup?.market_price) document.getElementById('new-price').value = lookup.market_price;
+
+    document.getElementById('qty-input').value = 1;
+    document.getElementById('result-card').classList.add('show');
+    document.getElementById('scan-again-btn').classList.add('show');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Controls
+  // ---------------------------------------------------------------------------
+  function changeQty(delta) {
+    const el = document.getElementById('qty-input');
+    el.value = parseInt(el.value || '0') + delta;
+  }
+
+  function setReason(btn) {
+    document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedReason = btn.dataset.reason;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+  async function submitScan() {
+    const qty = parseInt(document.getElementById('qty-input').value || '0');
+    if (qty === 0) { showToast('Quantity cannot be 0', 'error'); return; }
+
+    const btn = document.getElementById('confirm-btn');
+    btn.disabled = true;
+    btn.textContent = 'Updating…';
+
+    try {
+      let body = {
+        barcode: currentBarcode,
+        quantity_change: qty,
+        reason: selectedReason,
+      };
+
+      if (isNewItem) {
+        const name = document.getElementById('new-name').value.trim();
+        if (!name) { showToast('Please enter a product name', 'error'); btn.disabled = false; btn.textContent = 'Update Inventory'; return; }
+        body.sell_price = parseFloat(document.getElementById('new-price').value) || null;
+        // For new items we still go through /scan which auto-creates the item
+      }
+
+      const res = await fetch(`${BASE}/scan`, {
+        method: 'POST',
+        headers: HEADERS,
+        body: JSON.stringify(body),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const newQty = data.item?.quantity ?? data.quantity ?? '?';
+        showToast(`Updated! New stock: ${newQty}`, 'success');
+        btn.textContent = '✓ Updated';
+        // Update qty display
+        document.getElementById('item-qty').textContent = newQty;
+        document.getElementById('new-badge').style.display = 'none';
+        isNewItem = false;
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.detail || 'Update failed', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Update Inventory';
+      }
+    } catch(e) {
+      showToast('Network error', 'error');
+      btn.disabled = false;
+      btn.textContent = 'Update Inventory';
+    }
+  }
+
+  async function scanAgain() {
+    currentBarcode = null;
+    isNewItem = false;
+    document.getElementById('result-card').classList.remove('show');
+    document.getElementById('scan-again-btn').classList.remove('show');
+    document.getElementById('hint').textContent = 'Point your camera at a barcode';
+    document.getElementById('confirm-btn').disabled = false;
+    document.getElementById('confirm-btn').textContent = 'Update Inventory';
+    // Clear new item form
+    document.getElementById('new-name').value = '';
+    document.getElementById('new-brand').value = '';
+    document.getElementById('new-category').value = '';
+    document.getElementById('new-price').value = '';
+    document.getElementById('new-item-form').classList.remove('show');
+
+    scanning = true;
+    try { await scanner.resume(); } catch(e) {}
+  }
+
+  // ---------------------------------------------------------------------------
+  // Toast
+  // ---------------------------------------------------------------------------
+  let toastTimer = null;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'show ' + type;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = type; }, 3000);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: #F5E0CF;
+  --accent-foreground: #1B3A4B;
+  --background: #F5E0CF;
+  --foreground: #1B3A4B;
+  --border: #E8D4C6;
+  --card: #FFFFFF;
+  --card-foreground: #1B3A4B;
+  --color-error: #FEE2E2;
+  --color-info: #F5E0CF;
+  --color-success: #D1FAE5;
+  --color-warning: #FEF3C7;
+  --muted: #FDF5EF;
+  --muted-foreground: #5C7A8A;
+  --primary: #E8654A;
+  --primary-foreground: #FFFFFF;
+  --secondary: #FDF5EF;
+  --secondary-foreground: #1B3A4B;
+  --sidebar: #1B3A4B;
+  --sidebar-accent: #1F4455;
+  --sidebar-foreground: #7A9EB0;
+  --radius-m: 16px;
+  --radius-none: 0px;
+  --radius-pill: 999px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-[#F5E0CF];
+  }
+
+  body {
+    @apply m-0 bg-[#F5E0CF] font-sans text-[#1B3A4B];
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+.material-symbols {
+  font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+}
+
+.material-symbols-sharp {
+  font-family: 'Material Symbols Sharp';
+}
+
+.material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
+}

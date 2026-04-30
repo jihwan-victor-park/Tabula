@@ -1,0 +1,23 @@
+{
+  "cycle_id": "demo_fallback",
+  "generated_at": "2026-03-29T12:00:00Z",
+  "rounds": 3,
+  "participants": ["College Convenience & Deli", "Grails", "Edible Arrangements", "Tinaliah Designs", "The Marketa"],
+  "messages": [
+    { "round": 0, "store_id": "store_a", "store_name": "College Convenience & Deli", "argument": "Yale finals week is coming — energy drinks and grab-and-go meals always spike when students are cramming at Bass Library.", "timestamp": "2026-03-29T12:00:00Z" },
+    { "round": 0, "store_id": "store_b", "store_name": "Grails", "argument": "Agreed. Every Yale semester end we see streetwear resale pick up — students want fresh fits before heading home for summer.", "timestamp": "2026-03-29T12:00:01Z" },
+    { "round": 0, "store_id": "store_c", "store_name": "Edible Arrangements", "argument": "Yale commencement is the real driver for us. Parents flood New Haven for graduation — gift basket demand goes through the roof.", "timestamp": "2026-03-29T12:00:02Z" },
+    { "round": 0, "store_id": "store_d", "store_name": "Tinaliah Designs", "argument": "Custom Yale-themed jewelry is trending for graduation gifts. Personalized class rings and 'Y' pendants are our hottest items right now.", "timestamp": "2026-03-29T12:00:03Z" },
+    { "round": 0, "store_id": "store_e", "store_name": "The Marketa", "argument": "Winter stock is still sitting. With Yale spring events ramping up, we should clear old inventory and pivot to graduation and Bulldog Days traffic.", "timestamp": "2026-03-29T12:00:04Z" },
+    { "round": 1, "store_id": "store_a", "store_name": "College Convenience & Deli", "argument": "Good call on pivoting. But Yale students stress-eat through April — I'm keeping comfort food stocked until reading period ends.", "timestamp": "2026-03-29T12:00:05Z" },
+    { "round": 1, "store_id": "store_b", "store_name": "Grails", "argument": "I'm with The Marketa. If it didn't sell during Yale's winter semester, it won't move now. Time to make room for spring drops.", "timestamp": "2026-03-29T12:00:06Z" },
+    { "round": 1, "store_id": "store_c", "store_name": "Edible Arrangements", "argument": "The aggregated signal shows gifts trending up across all of us near Yale. Strong consensus — lean into graduation gifting hard.", "timestamp": "2026-03-29T12:00:07Z" },
+    { "round": 1, "store_id": "store_d", "store_name": "Tinaliah Designs", "argument": "True, but foot traffic varies block by block. Chapel Street near Yale gets way more walk-ins than Audubon — the data might smooth that out.", "timestamp": "2026-03-29T12:00:08Z" },
+    { "round": 1, "store_id": "store_e", "store_name": "The Marketa", "argument": "Exactly. Use the shared New Haven trends for big-picture calls, but trust your own street-level data for the specifics.", "timestamp": "2026-03-29T12:00:09Z" },
+    { "round": 2, "store_id": "store_a", "store_name": "College Convenience & Deli", "argument": "Consensus: stock up for Yale finals and commencement, clear winter leftovers, and trust local signals for block-by-block decisions.", "timestamp": "2026-03-29T12:00:10Z" },
+    { "round": 2, "store_id": "store_b", "store_name": "Grails", "argument": "Works for me. The privacy-preserving aggregation showed us the New Haven macro trend without anyone revealing their actual numbers.", "timestamp": "2026-03-29T12:00:11Z" },
+    { "round": 2, "store_id": "store_c", "store_name": "Edible Arrangements", "argument": "Yale graduation gifting is the signal I needed. Placing bulk fruit orders this week — families are already booking hotels in New Haven.", "timestamp": "2026-03-29T12:00:12Z" },
+    { "round": 2, "store_id": "store_d", "store_name": "Tinaliah Designs", "argument": "Great debate. I'll push Yale-themed custom pieces and scale back winter lines. Five stores sharing insights makes us all smarter.", "timestamp": "2026-03-29T12:00:13Z" },
+    { "round": 2, "store_id": "store_e", "store_name": "The Marketa", "argument": "This is what makes the Yale/New Haven small business ecosystem work — we compete on products but collaborate on intelligence. Next cycle!", "timestamp": "2026-03-29T12:00:14Z" }
+  ]
+}

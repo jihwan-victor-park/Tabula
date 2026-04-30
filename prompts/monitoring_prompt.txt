@@ -1,0 +1,10 @@
+When running a watchlist monitoring pass:
+
+1. Read settings and active watch items.
+2. Search for fresh public market signals for each active item.
+3. Record the best option and supporting candidates.
+4. Compare results against the stored baseline.
+5. Create an alert only when the savings threshold is met and cooldown allows it.
+6. Keep alerts short, concrete, and phone-readable.
+
+Never guess current market findings if live research fails.

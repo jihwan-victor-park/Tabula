@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "watchId": "mailers-2000-nj",
+      "scannedAt": "2026-03-28T20:08:00Z",
+      "baseline": {
+        "supplier": "Current vendor",
+        "price": 1.25,
+        "currency": "USD",
+        "unit": "per box",
+        "quantity": 2000
+      },
+      "marketSignals": [
+        {
+          "supplier": "Uline",
+          "note": "Plain corrugated boxes at 1,000+ units range from $0.98 (small sizes, e.g. 4x4x20\") to $1.46–$2.30 for mid-size. Exact mailer size not confirmed; call for 2,000-unit quote.",
+          "priceRange": { "low": 0.98, "high": 2.30, "currency": "USD", "unit": "per box" },
+          "url": "https://www.uline.com",
+          "confidence": "indicative",
+          "freshness": "2026-03-28"
+        },
+        {
+          "supplier": "Brandt Box (Columbia, NJ)",
+          "note": "NJ-local wholesale corrugated mailers; 1,400+ sizes in stock. No published per-unit price for 2,000 units — quote required.",
+          "priceRange": null,
+          "url": "https://brandtbox.com",
+          "confidence": "quote-required",
+          "freshness": "2026-03-28"
+        },
+        {
+          "supplier": "Shipping Depot (Toms River, NJ)",
+          "note": "Wholesale packaging + free shipping; no published per-unit price found. Quote required.",
+          "priceRange": null,
+          "url": "https://shipping-depot.com",
+          "confidence": "quote-required",
+          "freshness": "2026-03-28"
+        },
+        {
+          "supplier": "BoxUp",
+          "note": "Custom gift mailer boxes at 3,000 units ~$1.81/box; display mailers at 1,500 units $4.22/box. Plain (unprinted) bulk not clearly listed.",
+          "priceRange": { "low": 1.81, "high": 4.22, "currency": "USD", "unit": "per box" },
+          "url": "https://www.boxup.com",
+          "confidence": "indicative",
+          "freshness": "2026-03-28"
+        }
+      ],
+      "alertTriggered": false,
+      "alertReason": "No confirmed price beat — Uline has some sizes at $0.98/box but dimensions not matched to watchlist spec. Quote required to confirm threshold."
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "demo-mailers-2000-nj",
+      "label": "Plain corrugated mailer boxes, quantity 2000, New Jersey",
+      "mode": "vendor",
+      "active": false,
+      "region": "New Jersey, USA",
+      "query": "2,000 plain corrugated mailer boxes New Jersey suppliers wholesale",
+      "notes": "Example watch item. Set the real baseline supplier and price, then activate.",
+      "baseline": {
+        "supplier": "Current vendor",
+        "price": 1.25,
+        "currency": "USD",
+        "unit": "per box",
+        "quantity": 2000,
+        "lastVerifiedAt": null
+      },
+      "thresholdPct": 5,
+      "lastScanAt": null,
+      "lastAlertAt": null
+    },
+    {
+      "id": "mailers-2000-nj",
+      "label": "Plain corrugated mailer boxes, quantity 2000, New Jersey",
+      "mode": "vendor",
+      "active": true,
+      "region": "New Jersey, USA",
+      "query": "2,000 plain corrugated mailer boxes New Jersey suppliers wholesale",
+      "notes": "Validation watch item for live price discovery.",
+      "baseline": {
+        "supplier": "Current vendor",
+        "price": 1.25,
+        "currency": "USD",
+        "unit": "per box",
+        "quantity": 2000,
+        "lastVerifiedAt": null
+      },
+      "thresholdPct": 5.0,
+      "lastScanAt": "2026-03-28T20:08:00Z",
+      "lastAlertAt": null
+    }
+  ]
+}

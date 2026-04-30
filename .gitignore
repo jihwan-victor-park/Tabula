@@ -1,0 +1,9 @@
+.env
+.openclaw/agents/main/agent/auth-profiles.json
+data/sales.db
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/

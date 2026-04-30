@@ -1,0 +1,313 @@
+{
+  "cycle_id": "cycle_20260329_115512",
+  "scenario": "default",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "market_trends": [
+    {
+      "category": "lego_sets",
+      "direction": "rising",
+      "strength": 0.72,
+      "signal_count": 6,
+      "consensus": "strong"
+    },
+    {
+      "category": "dolls",
+      "direction": "falling",
+      "strength": 0.71,
+      "signal_count": 5,
+      "consensus": "strong"
+    },
+    {
+      "category": "educational_toys",
+      "direction": "rising",
+      "strength": 0.68,
+      "signal_count": 5,
+      "consensus": "strong"
+    },
+    {
+      "category": "action_figures",
+      "direction": "rising",
+      "strength": 0.66,
+      "signal_count": 5,
+      "consensus": "strong"
+    },
+    {
+      "category": "board_games",
+      "direction": "rising",
+      "strength": 0.63,
+      "signal_count": 6,
+      "consensus": "strong"
+    },
+    {
+      "category": "craft_kits",
+      "direction": "falling",
+      "strength": 0.62,
+      "signal_count": 6,
+      "consensus": "moderate"
+    },
+    {
+      "category": "outdoor_toys",
+      "direction": "falling",
+      "strength": 0.51,
+      "signal_count": 6,
+      "consensus": "moderate"
+    },
+    {
+      "category": "video_games",
+      "direction": "stable",
+      "strength": 0.49,
+      "signal_count": 6,
+      "consensus": "moderate"
+    },
+    {
+      "category": "books_comics",
+      "direction": "stable",
+      "strength": 0.49,
+      "signal_count": 6,
+      "consensus": "moderate"
+    },
+    {
+      "category": "puzzles",
+      "direction": "stable",
+      "strength": 0.46,
+      "signal_count": 6,
+      "consensus": "moderate"
+    }
+  ],
+  "store_results": [
+    {
+      "store_id": "store_a",
+      "store_name": "ToyBox Haven",
+      "generated_at": "2026-03-29T11:55:12Z",
+      "recommendations": [
+        {
+          "category": "action_figures",
+          "action": "increase_stock",
+          "reasoning": "Market trends show strong rising demand for action figures, and this category has been our best performer lately. Seizing this opportunity aligns with our goal to maintain a broad selection while capitalizing on high-margin items.",
+          "confidence": 0.92,
+          "priority": "high"
+        },
+        {
+          "category": "puzzles",
+          "action": "reduce_stock",
+          "reasoning": "Puzzles are showing stable but slow movement in the market, and our owner has noted concerns about slow-moving inventory. Reducing stock here will free up limited storage space for more in-demand items.",
+          "confidence": 0.85,
+          "priority": "medium"
+        },
+        {
+          "category": "lego_sets",
+          "action": "increase_stock",
+          "reasoning": "Lego sets are experiencing strong market growth with high consumer interest. Investing in this category supports our goal of maintaining a broad selection while meeting current demand trends.",
+          "confidence": 0.88,
+          "priority": "high"
+        },
+        {
+          "category": "dolls",
+          "action": "reduce_stock",
+          "reasoning": "Dolls are falling out of favor in the market, and our limited storage space should be prioritized for categories with stronger demand like action figures and Lego sets.",
+          "confidence": 0.79,
+          "priority": "medium"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Board games are experiencing rising market demand, and this aligns well with our strategy to maintain a broad selection. Moderate storage impact makes this a strategic addition.",
+          "confidence": 0.83,
+          "priority": "medium"
+        }
+      ]
+    },
+    {
+      "store_id": "store_b",
+      "store_name": "BrainPlay Emporium",
+      "generated_at": "2026-03-29T11:55:12Z",
+      "recommendations": [
+        {
+          "category": "STEM_kits",
+          "action": "increase_stock",
+          "reasoning": "STEM kits are flying off the shelves per owner notes, and educational toys are rising in market demand. Increasing stock aligns with store goals to expand STEM offerings despite limited floor space.",
+          "confidence": 0.95,
+          "priority": "high"
+        },
+        {
+          "category": "dolls",
+          "action": "discontinue",
+          "reasoning": "Dolls have low margins per owner notes and are falling in market demand. Discontinuing aligns with store goals to focus on educational toys and frees up space.",
+          "confidence": 0.9,
+          "priority": "medium"
+        },
+        {
+          "category": "lego_sets",
+          "action": "increase_stock",
+          "reasoning": "Lego sets have strong rising market demand and fit the educational toy niche. Increasing stock supports store goals to dominate this category.",
+          "confidence": 0.85,
+          "priority": "medium"
+        },
+        {
+          "category": "craft_kits",
+          "action": "reduce_stock",
+          "reasoning": "Craft kits are falling in market demand. Reducing stock helps optimize limited floor space and margin, aligning with store constraints and goals.",
+          "confidence": 0.8,
+          "priority": "low"
+        }
+      ]
+    },
+    {
+      "store_id": "store_c",
+      "store_name": "GameVault",
+      "generated_at": "2026-03-29T11:55:12Z",
+      "recommendations": [
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Board games are rising in demand (strong trend) and align with your successful game nights that drive foot traffic. Increasing stock can capitalize on this momentum and support your community hub goal.",
+          "confidence": 0.92,
+          "priority": "high"
+        },
+        {
+          "category": "action_figures",
+          "action": "increase_stock",
+          "reasoning": "Action figures are rising in demand (strong trend) and fit your collectibles expansion goal. This category has high turnover potential, which suits your cash flow constraints.",
+          "confidence": 0.88,
+          "priority": "high"
+        },
+        {
+          "category": "lego_sets",
+          "action": "increase_stock",
+          "reasoning": "LEGO sets are rising in demand (strong trend) and can attract both collectors and families. They complement your collectibles strategy and have broad appeal.",
+          "confidence": 0.85,
+          "priority": "medium"
+        },
+        {
+          "category": "video_games",
+          "action": "hold",
+          "reasoning": "Video games are stable (moderate trend) and serve as your reliable revenue stream. Maintain current stock levels to ensure consistent sales without overinvesting during uncertain times.",
+          "confidence": 0.78,
+          "priority": "low"
+        }
+      ]
+    },
+    {
+      "store_id": "store_d",
+      "store_name": "Little Adventurers",
+      "generated_at": "2026-03-29T11:55:12Z",
+      "recommendations": [
+        {
+          "category": "educational_toys",
+          "action": "increase_stock",
+          "reasoning": "Strong rising market trend aligns with our goal to expand into nature-based educational toys. Spring season demands outdoor learning products, and we should capitalize on this opportunity with moderate signal strength and strong consensus.",
+          "confidence": 0.76,
+          "priority": "high"
+        },
+        {
+          "category": "outdoor_toys",
+          "action": "hold",
+          "reasoning": "Despite the moderate falling trend, our seasonal demand will spike soon. With limited warehouse space, we should maintain current stock until spring demand materializes, then reassess based on actual sales.",
+          "confidence": 0.68,
+          "priority": "medium"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Strong rising trend with high consensus indicates sustained demand. Board games complement outdoor toys and can be promoted as rainy-day alternatives, aligning with our active play focus.",
+          "confidence": 0.71,
+          "priority": "medium"
+        },
+        {
+          "category": "craft_kits",
+          "action": "reduce_stock",
+          "reasoning": "Moderate falling trend suggests declining interest. Our limited warehouse space is better allocated to high-demand categories like educational toys and board games.",
+          "confidence": 0.65,
+          "priority": "low"
+        }
+      ]
+    },
+    {
+      "store_id": "store_e",
+      "store_name": "Wonder Pages",
+      "generated_at": "2026-03-29T11:55:12Z",
+      "recommendations": [
+        {
+          "category": "craft_kits",
+          "action": "promote",
+          "reasoning": "Craft kits are a key differentiator for Wonder Pages, but market demand is falling. Proactive promotion can help maintain visibility despite broader market trends, especially with the new subscription pilot.",
+          "confidence": 0.85,
+          "priority": "high"
+        },
+        {
+          "category": "lego_sets",
+          "action": "increase_stock",
+          "reasoning": "LEGO demand is rising strongly, and Wonder Pages has improved margins recently. This presents an opportunity to capitalize on both margin improvement and market demand.",
+          "confidence": 0.92,
+          "priority": "high"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Board games are rising in demand, and they align well with the store's community focus (book clubs, etc.). This category can be leveraged to drive foot traffic.",
+          "confidence": 0.88,
+          "priority": "medium"
+        },
+        {
+          "category": "dolls",
+          "action": "reduce_stock",
+          "reasoning": "Dolls are experiencing strong falling demand across the market. Reducing stock here can free up resources for higher-performing categories.",
+          "confidence": 0.75,
+          "priority": "medium"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "chain": "solana",
+    "network": "devnet",
+    "signals_on_chain": true,
+    "signal_count": 5,
+    "signals": [
+      {
+        "data_hash": "cae1b3b99b146debbe985267632d7bcf51abd3df976d1b42ef7a15f76479a6e9",
+        "label": "signals:store_a",
+        "tx_signature": "",
+        "verified": false,
+        "timestamp": 1774785321.975049
+      },
+      {
+        "data_hash": "3958aa1a87b26bdaed93ebddc793e22ca0af1cfbdec8f9b6ebe4acdd4b01a511",
+        "label": "signals:store_b",
+        "tx_signature": "",
+        "verified": false,
+        "timestamp": 1774785330.04015
+      },
+      {
+        "data_hash": "4e2ff3df88392829ab450b907114126e79059e4d9f29f966a2de66c3af3827bb",
+        "label": "signals:store_c",
+        "tx_signature": "",
+        "verified": false,
+        "timestamp": 1774785339.70919
+      },
+      {
+        "data_hash": "21029a7d9ae44290e96cba1aee3c06b75d69301e3ca26226a7e9290e502fd63d",
+        "label": "signals:store_d",
+        "tx_signature": "",
+        "verified": false,
+        "timestamp": 1774785348.183687
+      },
+      {
+        "data_hash": "8a2071f414f66fc7cbe52d72b73ba926fbbe2110d162f6c891092e40c1777b2e",
+        "label": "signals:store_e",
+        "tx_signature": "",
+        "verified": false,
+        "timestamp": 1774785356.543561
+      }
+    ],
+    "summary_on_chain": true,
+    "summary": {
+      "data_hash": "97909016b76db2b5e9897057719a2f831992e21521bdfe3f557c612e73adc75e",
+      "label": "debate_summary",
+      "tx_signature": "",
+      "verified": false,
+      "timestamp": 1774785386.550025
+    },
+    "all_verified": false
+  }
+}

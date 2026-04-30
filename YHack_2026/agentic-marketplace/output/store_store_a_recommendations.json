@@ -1,0 +1,42 @@
+{
+  "store_id": "store_a",
+  "store_name": "ToyBox Haven",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "recommendations": [
+    {
+      "category": "action_figures",
+      "action": "increase_stock",
+      "reasoning": "Market trends show strong rising demand for action figures, and this category has been our best performer lately. Seizing this opportunity aligns with our goal to maintain a broad selection while capitalizing on high-margin items.",
+      "confidence": 0.92,
+      "priority": "high"
+    },
+    {
+      "category": "puzzles",
+      "action": "reduce_stock",
+      "reasoning": "Puzzles are showing stable but slow movement in the market, and our owner has noted concerns about slow-moving inventory. Reducing stock here will free up limited storage space for more in-demand items.",
+      "confidence": 0.85,
+      "priority": "medium"
+    },
+    {
+      "category": "lego_sets",
+      "action": "increase_stock",
+      "reasoning": "Lego sets are experiencing strong market growth with high consumer interest. Investing in this category supports our goal of maintaining a broad selection while meeting current demand trends.",
+      "confidence": 0.88,
+      "priority": "high"
+    },
+    {
+      "category": "dolls",
+      "action": "reduce_stock",
+      "reasoning": "Dolls are falling out of favor in the market, and our limited storage space should be prioritized for categories with stronger demand like action figures and Lego sets.",
+      "confidence": 0.79,
+      "priority": "medium"
+    },
+    {
+      "category": "board_games",
+      "action": "increase_stock",
+      "reasoning": "Board games are experiencing rising market demand, and this aligns well with our strategy to maintain a broad selection. Moderate storage impact makes this a strategic addition.",
+      "confidence": 0.83,
+      "priority": "medium"
+    }
+  ]
+}

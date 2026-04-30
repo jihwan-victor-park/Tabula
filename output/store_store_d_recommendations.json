@@ -1,0 +1,42 @@
+{
+  "store_id": "store_d",
+  "store_name": "Little Adventurers",
+  "generated_at": "2026-03-29T02:39:34Z",
+  "recommendations": [
+    {
+      "category": "craft_kits",
+      "action": "increase_stock",
+      "reasoning": "Market showing rising trend with moderate consensus (0.685 strength). Current stock at 62% capacity with healthy 16.7 days supply. Rising demand aligns with spring season and nature-based educational toy expansion goals.",
+      "confidence": 0.8,
+      "priority": "high"
+    },
+    {
+      "category": "educational_toys",
+      "action": "increase_stock",
+      "reasoning": "Strong rising market trend (0.635 strength) with moderate consensus. Currently at 67% capacity with good sales velocity (2.5 daily). Aligns perfectly with owner's goal to expand into nature-based educational toys.",
+      "confidence": 0.85,
+      "priority": "high"
+    },
+    {
+      "category": "outdoor_toys",
+      "action": "promote",
+      "reasoning": "Core specialty category showing stable market but mixed consensus. At 72% capacity with strong daily sales (10.0). Spring season approaching - promote current stock to capture seasonal demand before restocking.",
+      "confidence": 0.75,
+      "priority": "medium"
+    },
+    {
+      "category": "dolls",
+      "action": "reduce_stock",
+      "reasoning": "Market trend falling with mixed consensus (0.6 strength). Not aligned with outdoor/active play specialty. Current 20 days supply suggests slow movement. Focus warehouse space on core categories.",
+      "confidence": 0.7,
+      "priority": "medium"
+    },
+    {
+      "category": "board_games",
+      "action": "increase_stock",
+      "reasoning": "Rising market trend with moderate consensus (0.638 strength). At 62% capacity with decent supply levels. Good complement to outdoor toys for rainy days and summer camp partnerships.",
+      "confidence": 0.65,
+      "priority": "low"
+    }
+  ]
+}

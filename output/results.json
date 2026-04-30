@@ -1,0 +1,289 @@
+{
+  "cycle_id": "cycle_20260329_023934",
+  "scenario": "default",
+  "generated_at": "2026-03-29T02:39:34Z",
+  "market_trends": [
+    {
+      "category": "puzzles",
+      "direction": "stable",
+      "strength": 0.515,
+      "signal_count": 5,
+      "consensus": "mixed"
+    },
+    {
+      "category": "craft_kits",
+      "direction": "rising",
+      "strength": 0.685,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "board_games",
+      "direction": "rising",
+      "strength": 0.638,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "dolls",
+      "direction": "falling",
+      "strength": 0.6,
+      "signal_count": 4,
+      "consensus": "mixed"
+    },
+    {
+      "category": "lego_sets",
+      "direction": "rising",
+      "strength": 0.558,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "outdoor_toys",
+      "direction": "stable",
+      "strength": 0.487,
+      "signal_count": 5,
+      "consensus": "mixed"
+    },
+    {
+      "category": "educational_toys",
+      "direction": "rising",
+      "strength": 0.635,
+      "signal_count": 5,
+      "consensus": "moderate"
+    },
+    {
+      "category": "action_figures",
+      "direction": "stable",
+      "strength": 0.374,
+      "signal_count": 5,
+      "consensus": "strong"
+    },
+    {
+      "category": "video_games",
+      "direction": "stable",
+      "strength": 0.451,
+      "signal_count": 5,
+      "consensus": "mixed"
+    },
+    {
+      "category": "books_comics",
+      "direction": "stable",
+      "strength": 0.455,
+      "signal_count": 5,
+      "consensus": "strong"
+    }
+  ],
+  "store_results": [
+    {
+      "store_id": "store_a",
+      "store_name": "ToyBox Haven",
+      "generated_at": "2026-03-29T02:39:34Z",
+      "recommendations": [
+        {
+          "category": "craft_kits",
+          "action": "increase_stock",
+          "reasoning": "Market shows rising trend with 0.685 strength and moderate consensus. Currently at 25 days supply which is high, but with only 1.0 daily sales, increasing stock could capitalize on the rising market trend to boost this underperforming category.",
+          "confidence": 0.75,
+          "priority": "high"
+        },
+        {
+          "category": "educational_toys",
+          "action": "increase_stock",
+          "reasoning": "Strong rising market trend (0.635 strength) with moderate consensus. Currently at 20 days supply and only 50% capacity utilization. Low daily sales of 1.5 units suggest opportunity to capture growing market demand.",
+          "confidence": 0.8,
+          "priority": "high"
+        },
+        {
+          "category": "dolls",
+          "action": "reduce_stock",
+          "reasoning": "Market trend is falling with 0.6 strength despite mixed consensus. This is one of our specialty categories with good sales (6.5 daily), but with limited storage constraints and falling market demand, reducing stock aligns with lean inventory goals.",
+          "confidence": 0.7,
+          "priority": "medium"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Rising market trend (0.638 strength) with moderate consensus. Currently at 60% capacity with 17.1 days supply. Good daily sales of 3.5 units and rising market suggests opportunity to expand this category.",
+          "confidence": 0.72,
+          "priority": "medium"
+        },
+        {
+          "category": "puzzles",
+          "action": "promote",
+          "reasoning": "Owner previously expressed concern about slow-moving puzzle inventory. Market is stable but mixed consensus. At 22.5 days supply with low sales, promoting existing stock makes more sense than increasing inventory given storage constraints.",
+          "confidence": 0.65,
+          "priority": "low"
+        }
+      ]
+    },
+    {
+      "store_id": "store_b",
+      "store_name": "BrainPlay Emporium",
+      "generated_at": "2026-03-29T02:39:34Z",
+      "recommendations": [
+        {
+          "category": "educational_toys",
+          "action": "increase_stock",
+          "reasoning": "Market showing moderate rising trend (0.635 strength) and this is our core specialty category. Currently at 65% capacity with strong daily sales of 7.0 units. Perfect alignment with our goal to dominate educational toy niche.",
+          "confidence": 0.9,
+          "priority": "high"
+        },
+        {
+          "category": "craft_kits",
+          "action": "increase_stock",
+          "reasoning": "Strongest rising market trend (0.685 strength) with moderate consensus. Currently at 67% capacity with good sales velocity of 4.5 units daily. Complements our STEM focus well.",
+          "confidence": 0.85,
+          "priority": "high"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Rising market trend (0.638 strength) and already our second-best seller at 5.0 daily units. At 75% capacity, we need more stock to meet growing demand. Fits educational positioning.",
+          "confidence": 0.8,
+          "priority": "medium"
+        },
+        {
+          "category": "dolls",
+          "action": "discontinue",
+          "reasoning": "Market falling (0.6 strength), owner wants to discontinue low-margin dolls, and it's our worst performer at 0.5 daily sales. Resources better allocated to our specialty categories.",
+          "confidence": 0.95,
+          "priority": "high"
+        },
+        {
+          "category": "lego_sets",
+          "action": "promote",
+          "reasoning": "Market rising moderately (0.558 strength) and we have good stock levels at 70% capacity with solid 4.0 daily sales. LEGO aligns with our STEM focus - promote rather than increase stock due to high rent constraint.",
+          "confidence": 0.75,
+          "priority": "medium"
+        }
+      ]
+    },
+    {
+      "store_id": "store_c",
+      "store_name": "GameVault",
+      "generated_at": "2026-03-29T02:39:34Z",
+      "recommendations": [
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Market showing moderate rising trend (0.638 strength) and this aligns perfectly with our core specialty and weekly board game nights. Currently at 75% capacity with good turnover (8.0 daily sales). This is our community-building focus area.",
+          "confidence": 0.9,
+          "priority": "high"
+        },
+        {
+          "category": "craft_kits",
+          "action": "increase_stock",
+          "reasoning": "Strongest rising market trend (0.685 strength) and we're only at 40% capacity with low current sales (0.5 daily). Good opportunity to capitalize on market momentum with minimal current investment.",
+          "confidence": 0.8,
+          "priority": "medium"
+        },
+        {
+          "category": "video_games",
+          "action": "hold",
+          "reasoning": "Market is stable but mixed consensus. This is our bread and butter category with highest daily sales (12.0). At 80% capacity with good turnover. Given cash flow constraints, maintain current levels rather than risk overstock.",
+          "confidence": 0.7,
+          "priority": "medium"
+        },
+        {
+          "category": "dolls",
+          "action": "reduce_stock",
+          "reasoning": "Market trend falling (0.6 strength) and we have very low turnover (0.3 daily sales) with 33+ days supply. This category doesn't align with our gaming specialty and is tying up cash flow.",
+          "confidence": 0.8,
+          "priority": "high"
+        },
+        {
+          "category": "lego_sets",
+          "action": "promote",
+          "reasoning": "Market showing rising trend (0.558 strength) and we have decent stock levels (67% capacity) with moderate sales (2.5 daily). Rather than increase stock given cash constraints, promote current inventory to capitalize on market trend.",
+          "confidence": 0.7,
+          "priority": "low"
+        }
+      ]
+    },
+    {
+      "store_id": "store_d",
+      "store_name": "Little Adventurers",
+      "generated_at": "2026-03-29T02:39:34Z",
+      "recommendations": [
+        {
+          "category": "craft_kits",
+          "action": "increase_stock",
+          "reasoning": "Market showing rising trend with moderate consensus (0.685 strength). Current stock at 62% capacity with healthy 16.7 days supply. Rising demand aligns with spring season and nature-based educational toy expansion goals.",
+          "confidence": 0.8,
+          "priority": "high"
+        },
+        {
+          "category": "educational_toys",
+          "action": "increase_stock",
+          "reasoning": "Strong rising market trend (0.635 strength) with moderate consensus. Currently at 67% capacity with good sales velocity (2.5 daily). Aligns perfectly with owner's goal to expand into nature-based educational toys.",
+          "confidence": 0.85,
+          "priority": "high"
+        },
+        {
+          "category": "outdoor_toys",
+          "action": "promote",
+          "reasoning": "Core specialty category showing stable market but mixed consensus. At 72% capacity with strong daily sales (10.0). Spring season approaching - promote current stock to capture seasonal demand before restocking.",
+          "confidence": 0.75,
+          "priority": "medium"
+        },
+        {
+          "category": "dolls",
+          "action": "reduce_stock",
+          "reasoning": "Market trend falling with mixed consensus (0.6 strength). Not aligned with outdoor/active play specialty. Current 20 days supply suggests slow movement. Focus warehouse space on core categories.",
+          "confidence": 0.7,
+          "priority": "medium"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Rising market trend with moderate consensus (0.638 strength). At 62% capacity with decent supply levels. Good complement to outdoor toys for rainy days and summer camp partnerships.",
+          "confidence": 0.65,
+          "priority": "low"
+        }
+      ]
+    },
+    {
+      "store_id": "store_e",
+      "store_name": "Wonder Pages",
+      "generated_at": "2026-03-29T02:39:34Z",
+      "recommendations": [
+        {
+          "category": "craft_kits",
+          "action": "increase_stock",
+          "reasoning": "Market showing strong rising trend (0.685 strength) and this aligns perfectly with owner's goal to leverage craft kits as hidden gem. Current 16.7 days supply with high daily sales (6.0) suggests strong local demand. Subscription box pilot success with 40 subscribers indicates growing customer base.",
+          "confidence": 0.9,
+          "priority": "high"
+        },
+        {
+          "category": "board_games",
+          "action": "increase_stock",
+          "reasoning": "Market trend rising moderately (0.638 strength) and current 20 days supply with 2.0 daily sales shows steady demand. Fits creative play category growth goal and can leverage book club community for cross-selling game nights.",
+          "confidence": 0.8,
+          "priority": "high"
+        },
+        {
+          "category": "lego_sets",
+          "action": "increase_stock",
+          "reasoning": "Market trending upward (0.558 strength) and owner recently secured better supplier deal with improved margins. Current 16.7 days supply indicates good turnover. Rising market trend plus better margins overcome thin margin constraints.",
+          "confidence": 0.85,
+          "priority": "high"
+        },
+        {
+          "category": "dolls",
+          "action": "reduce_stock",
+          "reasoning": "Market showing falling trend (0.6 strength) with mixed consensus. Current 20 days supply is high relative to demand, and given thin margin constraints, reducing exposure to declining category makes sense.",
+          "confidence": 0.7,
+          "priority": "medium"
+        },
+        {
+          "category": "educational_toys",
+          "action": "promote",
+          "reasoning": "Market rising strongly (0.635 strength) but current stock level is adequate at 18 days supply. Rather than increase stock given margin constraints, promote existing inventory to capitalize on rising demand and support creative play category goals.",
+          "confidence": 0.75,
+          "priority": "medium"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "store_id": "store_e",
+  "store_name": "Wonder Pages",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "recommendations": [
+    {
+      "category": "craft_kits",
+      "action": "promote",
+      "reasoning": "Craft kits are a key differentiator for Wonder Pages, but market demand is falling. Proactive promotion can help maintain visibility despite broader market trends, especially with the new subscription pilot.",
+      "confidence": 0.85,
+      "priority": "high"
+    },
+    {
+      "category": "lego_sets",
+      "action": "increase_stock",
+      "reasoning": "LEGO demand is rising strongly, and Wonder Pages has improved margins recently. This presents an opportunity to capitalize on both margin improvement and market demand.",
+      "confidence": 0.92,
+      "priority": "high"
+    },
+    {
+      "category": "board_games",
+      "action": "increase_stock",
+      "reasoning": "Board games are rising in demand, and they align well with the store's community focus (book clubs, etc.). This category can be leveraged to drive foot traffic.",
+      "confidence": 0.88,
+      "priority": "medium"
+    },
+    {
+      "category": "dolls",
+      "action": "reduce_stock",
+      "reasoning": "Dolls are experiencing strong falling demand across the market. Reducing stock here can free up resources for higher-performing categories.",
+      "confidence": 0.75,
+      "priority": "medium"
+    }
+  ]
+}

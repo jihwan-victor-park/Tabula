@@ -1,0 +1,108 @@
+{
+  "source": "market_debate",
+  "generated_at": "2026-03-29T11:55:12Z",
+  "cycle_id": "cycle_20260329_115512",
+  "ai_model": "hermes-4-70b",
+  "ai_provider": "nous_research",
+  "summary": "Multi-agent debate across 5 stores analysed 10 product categories. Rising categories: lego sets, educational toys, action figures, board games. Declining categories: dolls, craft kits, outdoor toys. 3 categories remain stable.",
+  "store_count": 5,
+  "category_count": 10,
+  "top_rising": [
+    {
+      "category": "lego_sets",
+      "strength": 0.72,
+      "consensus": "strong"
+    },
+    {
+      "category": "educational_toys",
+      "strength": 0.68,
+      "consensus": "strong"
+    },
+    {
+      "category": "action_figures",
+      "strength": 0.66,
+      "consensus": "strong"
+    },
+    {
+      "category": "board_games",
+      "strength": 0.63,
+      "consensus": "strong"
+    }
+  ],
+  "top_falling": [
+    {
+      "category": "dolls",
+      "strength": 0.71,
+      "consensus": "strong"
+    },
+    {
+      "category": "craft_kits",
+      "strength": 0.62,
+      "consensus": "moderate"
+    },
+    {
+      "category": "outdoor_toys",
+      "strength": 0.51,
+      "consensus": "moderate"
+    }
+  ],
+  "average_confidence": 0.83,
+  "key_recommendations": [
+    {
+      "action": "increase_stock",
+      "category": "lego_sets",
+      "confidence": 0.88,
+      "store_count": 4
+    },
+    {
+      "action": "increase_stock",
+      "category": "board_games",
+      "confidence": 0.83,
+      "store_count": 4
+    },
+    {
+      "action": "increase_stock",
+      "category": "action_figures",
+      "confidence": 0.9,
+      "store_count": 2
+    },
+    {
+      "action": "reduce_stock",
+      "category": "dolls",
+      "confidence": 0.77,
+      "store_count": 2
+    },
+    {
+      "action": "reduce_stock",
+      "category": "craft_kits",
+      "confidence": 0.73,
+      "store_count": 2
+    },
+    {
+      "action": "increase_stock",
+      "category": "STEM_kits",
+      "confidence": 0.95,
+      "store_count": 1
+    },
+    {
+      "action": "discontinue",
+      "category": "dolls",
+      "confidence": 0.9,
+      "store_count": 1
+    },
+    {
+      "action": "reduce_stock",
+      "category": "puzzles",
+      "confidence": 0.85,
+      "store_count": 1
+    }
+  ],
+  "verification": {
+    "chain": "solana",
+    "network": "devnet",
+    "signals_on_chain": true,
+    "signal_count": 5,
+    "summary_on_chain": true,
+    "all_verified": false
+  }
+}
