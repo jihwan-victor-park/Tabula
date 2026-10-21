@@ -25,7 +25,11 @@ RECIPIENT=""
 if [ -f ".openclaw/onboarding.json" ]; then
   RECIPIENT=$(python3 -c "import json; d=json.load(open('.openclaw/onboarding.json')); print(d.get('recipient',''))" 2>/dev/null || true)
 fi
-RECIPIENT="${RECIPIENT:-+18584019272}"
+RECIPIENT="${RECIPIENT:-${TABULA_DEFAULT_RECIPIENT:-}}"
+if [ -z "$RECIPIENT" ]; then
+  echo "No iMessage recipient. Run onboarding.sh or set TABULA_DEFAULT_RECIPIENT in .env" >&2
+  exit 1
+fi
 
 echo "Starting PriceScout stack..."
 echo "  iMessage recipient: $RECIPIENT"

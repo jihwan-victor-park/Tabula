@@ -10,3 +10,27 @@ venv/
 
 # Real pilot customer files never go in git
 data/pilot/
+
+# --- Runtime state and credentials: never commit (see docs/SECURITY.md) ---
+.openclaw/identity/
+.openclaw/devices/
+.openclaw/agents/*/sessions/
+.openclaw/agents/*/agent/
+.openclaw/logs/
+.openclaw/memory/
+.openclaw/openclaw.json
+.openclaw/openclaw.json.bak*
+.openclaw/onboarding.json
+.openclaw/update-check.json
+.openclaw/workspace-state.json
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+.DS_Store
+# per-recipient onboarding files are named after phone numbers
+.openclaw/identity_*.md
+.openclaw/soul_*.md
+.openclaw/memory_*.md

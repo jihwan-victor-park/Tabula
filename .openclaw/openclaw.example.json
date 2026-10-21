@@ -22,7 +22,7 @@
       "heartbeat": {
         "every": "4h",
         "target": "imessage",
-        "to": "+18584019272",
+        "to": "+15551234567",
         "isolatedSession": true,
         "lightContext": false,
         "activeHours": {
@@ -39,7 +39,7 @@
       "models": {
         "anthropic/claude-sonnet-4-6": {}
       },
-      "workspace": "/Users/mmm/Downloads/yhack"
+      "workspace": "~/Downloads/yhack"
     }
   },
   "tools": {
@@ -62,7 +62,7 @@
   "channels": {
     "imessage": {
       "enabled": true,
-      "cliPath": "/Users/mmm/.local/bin/imsg",
+      "cliPath": "~/.local/bin/imsg",
       "dmPolicy": "pairing",
       "groupPolicy": "allowlist"
     }
@@ -73,7 +73,7 @@
     "bind": "loopback",
     "auth": {
       "mode": "token",
-      "token": "c09336473bae23741ee357c46e84d1b174d9187e5efc866d"
+      "token": "<set in ~/.openclaw/openclaw.json>"
     },
     "tailscale": {
       "mode": "off",

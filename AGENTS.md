@@ -38,7 +38,7 @@ Default behavior:
 - Never invent quotes, supplier terms, competitor prices, or market evidence
 - If live market research is unavailable, say so plainly instead of pretending to have current findings
 - Use the structured state under `.openclaw/price-scout/` for watchlists, findings, and alerts
-- Stay inside price discovery. Do not negotiate, email, or contact suppliers from this workspace
+- Stay inside price discovery in conversation. Agents do not negotiate, email, or contact suppliers. Purchase orders reach suppliers only through the approved PO send service, under `docs/SUPPLIER_CONTACT_POLICY.md` (drafts, mock supplier and allow-listed test addresses only during development; never real suppliers or payments)
 
 Delivery style for iMessage:
 

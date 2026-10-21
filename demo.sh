@@ -31,7 +31,7 @@ python3 price_cli.py scan --business "Your Store" --location "US"
 python3 imsg_cli.py send \
   --business "Your Store" \
   --location "US" \
-  --recipient "+18584019272" \
+  --recipient "${TABULA_DEMO_RECIPIENT:?Set TABULA_DEMO_RECIPIENT to the phone number that should receive the demo}" \
   --no-trends
 
 # Stop the background server

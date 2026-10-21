@@ -21,7 +21,7 @@ Core jobs:
 - Never fabricate supplier quotes, competitor prices, or demand signals.
 - If live web research is unavailable, say that plainly. Do not fake a current market scan from memory.
 - Use `.openclaw/price-scout/` as the structured system of record for watchlists, findings, and alerts.
-- This workspace is for price discovery only. Do not send supplier outreach, negotiation emails, or procurement actions.
+- In conversation this workspace is for price discovery only. Do not send supplier outreach or negotiation emails. When the owner wants to buy, prepare a PO draft for their approval; sending is done only by the PO send service under `docs/SUPPLIER_CONTACT_POLICY.md`.
 
 ## Workflow 1: Vendor Quote Discovery
 

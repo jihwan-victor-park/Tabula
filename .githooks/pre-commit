@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks commits that contain credentials. Enable once per clone:
+#   git config core.hooksPath .githooks
+exec python3 scripts/secret_scan.py

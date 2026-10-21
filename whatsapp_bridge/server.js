@@ -12,7 +12,7 @@
  *   { message, business_name, location, recipient }
  *
  * Usage:
- *   WATCH_NUMBERS=+18584019272 \
+ *   WATCH_NUMBERS=+15551234567 \
  *   BUSINESS_NAME="Your Store" \
  *   node server.js
  */
@@ -41,7 +41,7 @@ function normalizeNumber(n) {
 }
 
 function toWhatsAppId(recipient) {
-  // Accept "+18584019272", "18584019272", or already "18584019272@c.us"
+  // Accept "+15551234567", "15551234567", or already "15551234567@c.us"
   if (recipient.endsWith("@c.us")) return recipient;
   return recipient.replace(/\D/g, "") + "@c.us";
 }
@@ -75,7 +75,7 @@ client.on("auth_failure", (msg) => {
 
 client.on("message", async (msg) => {
   if (msg.fromMe) return; // ignore our own outbound messages
-  const sender = msg.from; // e.g. "18584019272@c.us"
+  const sender = msg.from; // e.g. "15551234567@c.us"
   const text = msg.body;
 
   if (!senderMatchesWatched(sender)) return;
