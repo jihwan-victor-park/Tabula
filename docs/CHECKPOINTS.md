@@ -161,20 +161,20 @@ CP3에서 미룬 것 (담당 CP)
 
 ## [~] CP4 — 첫 POS 커넥터 (Square) `[CON-01] [CON-02]` — 구현 완료 · mock 검증 · ⏳ Sandbox 실호출 미검증(U6) · 실제 고객 미검증
 
-**운영 전 필수 (지금은 CSV import + mock으로 진행):** 4.2b token refresh, 4.6 변경분 polling·야간 대조 스케줄, 4.8a CSV↔Square 주문 key 인계 규칙(같은 위치의 판매 출처를 하나로 정하는 규칙 포함), 환불 주문(refund order) 모델링. 이 넷이 끝나기 전에는 Square를 실제 매장의 판매 출처로 켜지 않는다.
+**운영 전 필수:** D1–D5·D8의 Sandbox 실호출 검증. 4.2b·4.6·4.8a·환불 규칙은 구현·mock 검증까지 했다. Sandbox에서 실제 응답 형식(특히 환불 order와 재입고 기록)을 확인하기 전에는 Square를 실제 매장의 판매 출처로 켜지 않는다.
 
 
 Sandbox 개발과 App Marketplace 등재 심사는 별개다(`docs/SQUARE_SETUP.md`). 심사를 기다리지 않는다.
 
 - [x] 4.1 connector 계약(`clawbot/connectors/base.py`)과 실제 지원 기준의 `capabilities` (CP4: sales/inventory/catalog read만)
 - [x] 4.2 OAuth: 단일 사용·10분 만료 state(교환 실패해도 재사용 불가), token Fernet 암호화 저장, revoke. production은 `TABULA_ENV=production`에서만
-- [ ] 4.2b access token refresh job
+- [x] 4.2b access token refresh job — mock 검증, Sandbox 미검증 (D2)
 - [x] 4.3 위치는 사람이 하나씩 연결(자동 합산 없음), 연결된 위치의 재고 소유자 = square
 - [x] 4.4 backfill: catalog(매핑 **제안**만, 미일치 상품은 사람이 adopt), 완료 주문 판매·환불(Square UID key), 재고 snapshot, 동기화 기간을 sales coverage로 기록
 - [x] 4.5 webhook: 서명 검증 → 원본 저장(event_id 중복 제거) → outbox job → Square 최신 상태 재조회
-- [ ] 4.6 변경분 polling + 야간 전체 대조 스케줄 (webhook 유실 복원) — 동기화 함수는 있음, 스케줄러 없음
+- [x] 4.6 변경분 polling + 야간 재대조 스케줄 (webhook 유실 복원) — mock 검증, Sandbox 미검증 (D3)
 - [x] 4.7 POS 소유 위치는 snapshot 경로로만 갱신
-- [ ] 4.8a 주문 key 방식 인계: CSV로 기록된 주문에 커넥터가 이후 줄(환불 등)을 붙일 때의 규칙(지금은 검토 대상, CP3 리뷰 2e)
+- [x] 4.8a 판매 원본 소유권: 위치별 files/square + 전환 시각 (D4). 같은 주문이 두 경로로 오면 여전히 검토 대상(백스톱)
 - [x] 4.8 판매는 `key_scheme=provider_line`, 같은 주문이 CSV로 이미 있으면 이중 집계 없이 검토 대상
 - [x] 4.9 mock Square(`clawbot/connectors/square/mock.py`)로 전체 흐름 테스트, 재시도(429/5xx)·페이지네이션 포함
 
@@ -272,17 +272,55 @@ Gate: 10상자 중 8 입고·1 손상·잔량 2 시나리오에서 잔량·재�
 
 ---
 
-## 연결·데이터 항목별 상태 (완료로 표시하지 않음)
+## 연결·데이터 항목별 상태 (mock 검증과 Sandbox 실호출 검증을 따로 적는다)
 
-- [ ] D1 Square Sandbox 실호출 — 사용자 계정(U6) 필요
-- [ ] D2 Square token refresh job (4.2b)
-- [ ] D3 Square 정기 동기화·야간 대조 스케줄 (4.6)
-- [ ] D4 CSV ↔ Square 판매 원본 선택·인계 규칙 (4.8a)
-- [ ] D5 환불 주문 모델 (refund order)
-- [ ] D6 실제 고객 데이터 검증 (CP0)
-- [ ] D7 Square 재고 쓰기(입고를 POS에 반영) — 지금은 읽기 전용, 사람이 POS에 입력
+| ID | 항목 | 구현 | mock 검증 | Sandbox 실호출 | 비고 |
+|---|---|---|---|---|---|
+| D1 | Square 실제 인증·상품·재고·주문 가져오기 | ✓ | ✓ | ✗ | U6(계정·설정) 후 `scripts/square_sandbox_check.py` |
+| D2 | token refresh (만료 7일 전, 거부 시 needs_reauth) · 연결 해제·재연결(위치 연결 유지) | ✓ | ✓ | ✗ | |
+| D3 | 정기 동기화(판매 15분·재고 30분) + 야간 최근 3일 재대조(누락 복구 수 기록) | ✓ | ✓ | ✗ | connector worker가 1분마다 예약, 시간 칸(slot) 단위로 1회만 |
+| D4 | CSV ↔ Square 판매 원본 소유권·전환 | ✓ | ✓ | 해당 없음 | 위치별 전환 이력(구간). 판매 시각의 소유자만 기록 가능, 과거 구간 재작성 불가, 겹치면 전환 거부. 이미 Square 판매가 있던 위치는 migration에서 첫 Square 판매 시각부터 square로 채움 |
+| D5 | 환불·반품 → 판매량·재고 | ✓ | ✓ | ✗ | 환불은 수요 감소, 재입고 확인된 환불만 재고 증가, Square 환불은 재입고 "모름" |
+| D6 | 실제 고객 데이터 검증 | 도구 ✓ | — | — | **고객 데이터 없음.** `docs/CUSTOMER_DATA_REQUEST.md`, 익명화·비교 도구 준비 |
+| D7 | Square 재고 쓰기(입고 반영) | ✗ | — | — | 읽기 전용 유지. 입고는 사람이 POS에 입력 → 증거를 보고 대조 완료 |
+| D8 | webhook 실제 수신(서명·중복) | ✓ | ✓ | ✗ | 공개 HTTPS 터널 필요 |
 
----
+### 미입고 주문 export ↔ Tabula PO 연결 (CP7.12)
+
+- [x] 연결 식별자는 **공급업체 + 주문 번호뿐**이다. 상품·수량이 같다는 이유로는 합치지 않는다.
+- [x] 공백·대소문자만 다른 같은 번호는 자동으로 같은 주문으로 보고, Tabula 쪽 줄로 한 번만 센다.
+- [x] 구두점·앞자리 0만 다른 번호("PO00080", "80" ↔ "PO-00080")는 **제안**으로 둔다.
+  - 사람이 "같은 주문 / 다른 주문"을 결정하기 전에는 세지 않는다.
+  - 그동안 해당 품목 계획에 검토 사유가 붙고, Today의 "Needs your attention"에 표시된다.
+- [x] 결정은 기록된다(누가·언제·메모). 같은 주문으로 연결할 수 있는 것은 보낸 적 있는 같은 공급업체·같은 위치의 PO뿐이다.
+- [x] 닫히거나 실패한 PO의 번호도 대조한다. 오래된 export가 끝난 주문을 되살리지 않는다.
+
+### POS 소유 위치의 입고 대조 (CP8.3 개정)
+
+- [x] 더 새로운 POS 재고 reading이 들어왔다는 이유만으로 불일치를 해제하지 않는다.
+- [x] 증거를 계산한다. 입고 전 reading, 입력 후 첫 reading, 그 사이 판매·재입고 환불·재입고 여부 모르는 환불·다른 입고, 예상치, 설명되지 않는 차이를 보여준다.
+- [x] 판정 종류: consistent / consistent_if_refunds_not_restocked / explained_if_refunds_restocked / receipt_missing_in_pos / difference / no_reading_before / no_reading_after.
+- [x] owner·manager가 "POS가 맞음 / POS에서 고쳤음 / 차이 수용" 중 하나로 대조를 완료한다.
+  - 증거가 consistent가 아니면 메모가 필수다.
+  - 증거와 결정을 함께 저장한다.
+- [x] 미해결 항목은 Today의 "Needs your attention"에 경과 일수와 함께 계속 보인다. 조용히 해제되지도, 영원히 막히지도 않는다.
+
+독립 리뷰 1회 반영 (store-readiness):
+- 입고와 같은 시각의 POS reading이 그 입고를 가려 "consistent"가 되던 결함 → 이 입고는 항상 계산에 넣는다.
+- 판매 원본을 되돌리면 상대 구간이 다시 열려 이중 집계되던 결함 → 전환 이력 구간으로 관리한다.
+- 익명화 blocklist가 Billing/Shipping Name·PAN 등을 통과시키던 문제 → allowlist로 바꾸고 개인 열은 `--keep`으로도 유지 불가.
+- 기존 Square 위치가 migration 후 동기화를 멈추던 문제 → 첫 Square 판매 시각부터 square로 채움.
+- 과거 시각으로 전환하면 생기던 동기화 공백 → 동기화 기준점을 되감음.
+- 동시 token refresh가 잘못된 재연결을 요구하던 문제 → 계정 행 잠금.
+- 숫자만 같은 다른 번호 체계의 제안 → 접두 문자가 같거나 한쪽에 없을 때만 제안.
+- nit: 연결 결정 동시 첫 결정 upsert, 위치별 import 표시, 판매 원본별 다음 행동 링크, refresh token 없는 계정 반복 예약 제거, 재대조 하루 여유, sandbox 점검은 그 계정만, 비교 도구 미래 시각 방지.
+
+### 매장주 혼자 쓰기 (온보딩)
+
+- [x] Today 맨 위 "Needs your attention": 데이터가 오래됨·없음, 계획이 낡음, 보류 품목, 승인 대기, 공급업체 변경 제안, 전송 결과 불명, 미응답, 지연 입고, 회신 검토, POS 대조, 손상, 연결 오류를 표시한다. 항목마다 이유와 다음 행동 링크가 있다.
+- [x] 판매 import 미리보기가 파일 안의 첫·마지막 판매일을 제안한다(사람이 확인). 기준 시각 입력에 "Now" 버튼을 둔다.
+- [x] 데모 매장 버튼(개발 모드 전용, 비개발 환경은 404): seed 출력에서 날짜를 찾아 넣는 절차 없이 계획부터 시작한다.
+- [x] Connections 화면: 연결 상태·환경(mock/sandbox)·토큰 만료·위치 연결·판매 원본 전환·동기화·재대조 이력·해제.
 
 ## CP9 — Invoice 대조 `[BILL-01]`
 

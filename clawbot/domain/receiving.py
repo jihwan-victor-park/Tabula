@@ -23,8 +23,9 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from clawbot.domain import audit, data_version, inventory, po_progress, tenancy
@@ -181,12 +182,9 @@ def resolve_issue(session: Session, *, tenant_id: uuid.UUID, actor: Actor, issue
 
 
 def report_entered_in_pos(session: Session, *, tenant_id: uuid.UUID, actor: Actor, receipt_line_id: uuid.UUID) -> ReceiptLine:
-    """A person says they entered this receipt in the POS. It is confirmed by the next POS stock reading."""
+    """A person says they entered this receipt in the POS. Still to be reconciled (reconcile_pos)."""
     authorize(actor, "receiving.record")
-    rl = session.scalars(select(ReceiptLine).where(ReceiptLine.tenant_id == tenant_id, ReceiptLine.id == receipt_line_id)
-                         .with_for_update()).one_or_none()
-    if rl is None:
-        raise NotFound("Receipt line not found")
+    rl = _receipt_line(session, tenant_id, receipt_line_id, for_update=True)
     if rl.pos_status == "ledger_posted":
         raise StateConflict("This receipt was posted to Tabula's own stock ledger; there is nothing to enter in a POS")
     if rl.pos_status == "pending_pos":
@@ -198,25 +196,140 @@ def report_entered_in_pos(session: Session, *, tenant_id: uuid.UUID, actor: Acto
 
 def pos_unconfirmed(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID) -> dict[uuid.UUID, list[str]]:
     """
-    Items received in Tabula whose POS stock does not reflect it yet, by variant.
-    Confirmed only by a POS stock reading taken after the person reported entering it.
+    Items received in Tabula that nobody has yet reconciled against the POS, by variant.
+    A newer POS reading alone does not clear it — sales, refunds and adjustments in between
+    could hide a receipt that was never entered — an owner or manager signs off with the
+    evidence (pos_evidence / reconcile_pos).
     """
-    location = tenancy.get_location(session, tenant_id=tenant_id, location_id=location_id)
     out: dict[uuid.UUID, list[str]] = {}
     rows = session.scalars(select(ReceiptLine).where(
         ReceiptLine.tenant_id == tenant_id, ReceiptLine.location_id == location_id,
         ReceiptLine.pos_status.in_(("pending_pos", "pos_reported")))).all()
     for rl in rows:
-        if rl.pos_status == "pos_reported":
-            newer = session.scalar(select(InventorySnapshot.id).where(
-                InventorySnapshot.tenant_id == tenant_id, InventorySnapshot.location_id == location_id,
-                InventorySnapshot.variant_id == rl.variant_id,
-                InventorySnapshot.source_system == location.inventory_write_owner,
-                InventorySnapshot.as_of > rl.pos_reported_at).limit(1))
-            if newer is not None:
-                continue
-            why = "entered in the POS, waiting for a POS stock reading that shows it"
-        else:
-            why = "received in Tabula, not entered in the POS yet"
-        out.setdefault(rl.variant_id, []).append(why)
+        out.setdefault(rl.variant_id, []).append(
+            "entered in the POS — waiting for someone to reconcile it" if rl.pos_status == "pos_reported"
+            else "received in Tabula, not entered in the POS yet")
     return out
+
+
+def _receipt_line(session: Session, tenant_id: uuid.UUID, receipt_line_id: uuid.UUID, *, for_update: bool = False) -> ReceiptLine:
+    stmt = select(ReceiptLine).where(ReceiptLine.tenant_id == tenant_id, ReceiptLine.id == receipt_line_id)
+    rl = session.scalars(stmt.with_for_update() if for_update else stmt).one_or_none()
+    if rl is None:
+        raise NotFound("Receipt line not found")
+    return rl
+
+
+def pos_evidence(session: Session, *, tenant_id: uuid.UUID, receipt_line_id: uuid.UUID) -> dict[str, Any]:
+    """
+    What the POS readings say about one receipt, with everything else that moved stock in between:
+
+        expected after = reading before + units received (this and other receipts in the window)
+                         − units sold + refunds known to be restocked
+        unexplained    = reading after − expected
+
+    Refunds whose restock is unknown are listed separately (they may or may not be back on the
+    shelf), so a zero difference is never taken as proof on its own.
+    """
+    from clawbot.persistence.models import SalesLine
+
+    rl = _receipt_line(session, tenant_id, receipt_line_id)
+    receipt = session.get(Receipt, rl.receipt_id)
+    location = tenancy.get_location(session, tenant_id=tenant_id, location_id=rl.location_id)
+    source = location.inventory_write_owner
+    snaps = list(session.scalars(select(InventorySnapshot).where(
+        InventorySnapshot.tenant_id == tenant_id, InventorySnapshot.location_id == rl.location_id,
+        InventorySnapshot.variant_id == rl.variant_id, InventorySnapshot.source_system == source)
+        .order_by(InventorySnapshot.as_of)))
+    before = next((sn for sn in reversed(snaps) if sn.as_of <= receipt.received_at), None)
+    since = rl.pos_reported_at or receipt.received_at
+    after = next((sn for sn in snaps if sn.as_of > since), None)
+    out: dict[str, Any] = {
+        "source": source, "received_at": receipt.received_at.isoformat(),
+        "reported_entered_at": rl.pos_reported_at.isoformat() if rl.pos_reported_at else None,
+        "this_receipt_units": _n(rl.sellable_base_qty),
+        "reading_before": None if before is None else {"qty": _n(before.quantity), "at": before.as_of.isoformat()},
+        "reading_after": None if after is None else {"qty": _n(after.quantity), "at": after.as_of.isoformat()},
+        "latest_reading": None if not snaps else {"qty": _n(snaps[-1].quantity), "at": snaps[-1].as_of.isoformat()},
+    }
+    if before is None or after is None:
+        out["assessment"] = "no_reading_before" if before is None else "no_reading_after"
+        out["explanation"] = ("There is no POS stock reading from before this delivery, so the POS cannot be compared; "
+                              "check the item's stock history in the POS." if before is None else
+                              "No POS stock reading since the receipt was entered; sync the POS (or wait for the next "
+                              "sync) to compare, or check the POS directly.")
+        return out
+    lo, hi = before.as_of, after.as_of
+    sold = refunds_restocked = refunds_unknown = ZERO
+    for line in session.scalars(select(SalesLine).where(
+            SalesLine.tenant_id == tenant_id, SalesLine.location_id == rl.location_id, SalesLine.variant_id == rl.variant_id,
+            SalesLine.sold_at > lo, SalesLine.sold_at <= hi)):
+        if line.line_type == "sale":
+            sold += line.quantity
+        elif line.restock:
+            refunds_restocked += -line.quantity
+        elif line.restock is None:
+            refunds_unknown += -line.quantity
+    # This receipt always counts (a POS reading taken at the very moment of the delivery must not hide it);
+    # other deliveries of the item count when they fall inside the window.
+    others = sum((r.sellable_base_qty for r in session.scalars(select(ReceiptLine).join(
+        Receipt, and_(Receipt.tenant_id == ReceiptLine.tenant_id, Receipt.id == ReceiptLine.receipt_id)).where(
+        ReceiptLine.tenant_id == tenant_id, ReceiptLine.location_id == rl.location_id, ReceiptLine.variant_id == rl.variant_id,
+        ReceiptLine.id != rl.id, Receipt.received_at > lo, Receipt.received_at <= hi))), ZERO)
+    received = rl.sellable_base_qty + others
+    expected = before.quantity + received - sold + refunds_restocked
+    diff = after.quantity - expected
+    out.update(window={"from": lo.isoformat(), "to": hi.isoformat()}, units_received_in_window=_n(received),
+               units_sold=_n(sold), refunds_restocked=_n(refunds_restocked), refunds_restock_unknown=_n(refunds_unknown),
+               expected_after=_n(expected), unexplained=_n(diff))
+    if diff == 0 and refunds_unknown == 0:
+        out["assessment"], out["explanation"] = "consistent", (
+            "The reading after matches the reading before plus what was received, minus what sold. "
+            "An adjustment in the POS that happens to cancel out would not show here.")
+    elif diff == 0:
+        out["assessment"], out["explanation"] = "consistent_if_refunds_not_restocked", (
+            f"Matches if the {_n(refunds_unknown)} refunded unit(s) of unknown restock did not go back on the shelf; "
+            "if they did, a unit is missing. Check the POS.")
+    elif diff == refunds_unknown:
+        out["assessment"], out["explanation"] = "explained_if_refunds_restocked", (
+            f"The difference equals {_n(refunds_unknown)} refunded unit(s) whose restock is unknown; it fits if they went back on the shelf.")
+    elif diff == -rl.sellable_base_qty and rl.sellable_base_qty > 0:
+        out["assessment"], out["explanation"] = "receipt_missing_in_pos", (
+            "The POS stock moved exactly as if this delivery was never entered.")
+    else:
+        out["assessment"], out["explanation"] = "difference", (
+            f"{_n(diff)} unit(s) are unexplained by sales, refunds and receipts — an adjustment, a count, "
+            "or a receipt entered with a different quantity.")
+    return out
+
+
+RECONCILE_OUTCOMES = ("matches", "corrected_in_pos", "accepted_difference")
+
+
+def reconcile_pos(session: Session, *, tenant_id: uuid.UUID, actor: Actor, receipt_line_id: uuid.UUID, outcome: str,
+                  note: str | None) -> ReceiptLine:
+    """
+    An owner or manager signs off a receipt against the POS. The evidence at that moment is
+    stored with the decision. Anything other than a consistent comparison needs a note.
+    """
+    authorize(actor, "receiving.resolve")
+    if outcome not in RECONCILE_OUTCOMES:
+        raise ValidationFailed(f"outcome must be one of {', '.join(RECONCILE_OUTCOMES)}")
+    rl = _receipt_line(session, tenant_id, receipt_line_id, for_update=True)
+    if rl.pos_status not in ("pending_pos", "pos_reported"):
+        raise StateConflict(f"Nothing to reconcile (this receipt is {rl.pos_status.replace('_', ' ')})")
+    evidence = pos_evidence(session, tenant_id=tenant_id, receipt_line_id=receipt_line_id)
+    if (outcome != "matches" or evidence["assessment"] != "consistent") and not (note or "").strip():
+        raise ValidationFailed("Say what you checked in the POS: the evidence does not settle it on its own",
+                               details={"assessment": evidence["assessment"]})
+    rl.pos_status, rl.pos_reconciled_at, rl.pos_reconciled_by_user_id = "pos_reconciled", _now(), actor.user_id
+    rl.pos_reconciliation = {"outcome": outcome, "note": note, "evidence": evidence}
+    data_version.bump(session, tenant_id)
+    audit.record(session, tenant_id=tenant_id, actor=actor, action="receipt.pos_reconciled", object_type="receipt_line",
+                 object_id=rl.id, after={"outcome": outcome, "assessment": evidence["assessment"],
+                                         "unexplained": evidence.get("unexplained")}, reason=note)
+    return rl
+
+
+def _n(d: Decimal | None) -> str | None:
+    return None if d is None else f"{d.normalize():f}"

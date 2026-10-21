@@ -7,7 +7,7 @@ import { AppShell, Sidebar, SymbolIcon, cn } from '../components/ui';
 import { ApiError, loadSession, saveSession } from './api';
 
 export function OpsShell({ active, title, icon, actions, children }: {
-  active: 'today' | 'imports' | 'orders' | 'receiving' | 'setup';
+  active: 'today' | 'imports' | 'orders' | 'receiving' | 'connections' | 'setup';
   title: string; icon: string; actions?: ReactNode; children: ReactNode;
 }) {
   const session = loadSession();
@@ -24,6 +24,7 @@ export function OpsShell({ active, title, icon, actions, children }: {
               item('Data imports', 'upload_file', '/ops/imports', 'imports'),
               item('Purchase orders', 'receipt_long', '/ops/orders', 'orders'),
               item('Receiving', 'inventory_2', '/ops/receiving', 'receiving'),
+              item('Connections', 'hub', '/ops/connections', 'connections'),
               item('Workspace', 'storefront', '/ops/setup', 'setup'),
             ] },
             { title: 'Legacy demo', items: [{ label: 'Hackathon dashboard', icon: 'history', href: '/dashboard' }] },

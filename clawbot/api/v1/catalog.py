@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from clawbot.api.deps import DbSession, TenantContext, get_tenant_context, require_permission
 from clawbot.api.v1.suppliers import offer_out
-from clawbot.domain import catalog, matching, suppliers, tenancy
+from clawbot.domain import catalog, matching, sales, suppliers, tenancy
 from clawbot.schemas.catalog import (
     CandidateOut,
     ExternalMappingCreate,
@@ -56,6 +58,20 @@ def put_location_address(location_id: uuid.UUID, body: LocationAddress, session:
                          ctx: TenantContext = Depends(_can_edit_locations)) -> LocationOut:
     location = tenancy.set_location_address(session, tenant_id=ctx.tenant_id, actor=ctx.actor,
                                             location_id=location_id, address=body.model_dump())
+    return LocationOut.model_validate(location)
+
+
+class SalesFeedBody(BaseModel):
+    feed: Literal["files", "square"]
+    since: datetime | None = Field(default=None, description="When the new source takes over; default now")
+
+
+@router.put("/locations/{location_id}/sales-feed", response_model=LocationOut)
+def put_sales_feed(location_id: uuid.UUID, body: SalesFeedBody, session: Session = DbSession,
+                   ctx: TenantContext = Depends(_can_edit_locations)) -> LocationOut:
+    """Which source records this location's sales from `since`: uploaded files or the Square connector."""
+    location = sales.set_feed(session, tenant_id=ctx.tenant_id, actor=ctx.actor, location_id=location_id,
+                              feed=body.feed, since=body.since or datetime.now(timezone.utc))
     return LocationOut.model_validate(location)
 
 

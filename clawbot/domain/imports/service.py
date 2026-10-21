@@ -267,7 +267,7 @@ def build_context(session: Session, imp: Import) -> tuple[kinds.Context, list[st
     )
     if "location_id" in imp.context:
         location = tenancy.get_location(session, tenant_id=imp.tenant_id, location_id=uuid.UUID(imp.context["location_id"]))
-        ctx.timezone = location.timezone
+        ctx.timezone, ctx.location = location.timezone, location
     if imp.kind == "supplier_price_list":
         supplier = suppliers.get_supplier(session, tenant_id=imp.tenant_id, supplier_id=uuid.UUID(imp.context["supplier_id"]))
         ctx.currency, ctx.timezone = supplier.currency, supplier.timezone
@@ -374,7 +374,31 @@ def preview(session: Session, *, tenant_id: uuid.UUID, import_id: uuid.UUID, lim
         "counts": ev.counts if not ev.blocking else None,
         "rows": [_with_candidates(session, tenant_id, r) for r in sample],
         "more_errors": [_with_candidates(session, tenant_id, r) for r in errors],
+        "suggested_settings": _suggestions(session, imp, ev),
     }
+
+
+def _suggestions(session: Session, imp: Import, ev: Evaluation) -> dict[str, Any]:
+    """
+    Values the file itself suggests for settings the person must confirm (never applied by
+    themselves). Sales: the first and last day that has a sale in the file — the export's real
+    range can be wider (days with no sales at either end do not show up in the rows).
+    """
+    if ev.context.kind != "sales":
+        return {}
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(getattr(ev.context.settings, "timezone", None) or ev.context.timezone)
+    rows = ev.rows
+    if not rows and "sold_at" in ev.context.columns:
+        # Rows are not evaluated while settings are undeclared; read just the dates to suggest the period.
+        rows = [kinds.INTERPRETERS["sales"](ev.context, r.row_number, r.cells) for r in _rows(session, imp)]
+    days = sorted({r.values["sold_at"].astimezone(tz).date() for r in rows if r.values.get("sold_at")})
+    if not days:
+        return {}
+    return {"period_start": days[0].isoformat(), "period_end": days[-1].isoformat(),
+            "note": "First and last day with a sale in this file. If the export covers more days (with no sales), "
+                    "widen the period to match the export."}
 
 
 # ---------------------------------------------------------------------------

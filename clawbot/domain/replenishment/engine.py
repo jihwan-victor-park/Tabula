@@ -120,6 +120,8 @@ class ItemInputs:
     min_qty: Decimal | None = None
     max_qty: Decimal | None = None
     excluded: bool = False
+    # Input questions a person must answer (e.g. an export order that may be one of Tabula's own POs).
+    notes: tuple[str, ...] = ()
 
 
 @dataclass
@@ -305,6 +307,9 @@ def recommend(item: ItemInputs, policy: Policy) -> ItemResult:
             r.reason("intermittent_demand", f"Sold on only {demand.sale_days} of the last {demand.window_days} days")
         if item.stockout_dates:
             r.step("Stockout days excluded from demand", len(item.stockout_dates))
+
+    for note in item.notes:
+        r.reason("input_needs_decision", note)
 
     # --- inbound: what will arrive vs what only prevents a duplicate order
     arriving: list[InboundLine] = []  # confirmed, future ETA

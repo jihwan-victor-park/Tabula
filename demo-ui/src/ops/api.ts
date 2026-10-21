@@ -73,6 +73,7 @@ export type Me = { user_id: string; email: string; memberships: { tenant_id: str
 export type Location = {
   id: string; name: string; timezone: string; inventory_write_owner: string;
   address_line1: string | null; city: string | null; region: string | null; postal_code: string | null; country: string | null;
+  sales_feed: 'files' | 'square'; sales_feed_since: string | null;
 };
 export type Reason = { code: string; message: string; [k: string]: unknown };
 export type Step = { label: string; value: string; formula?: string };
@@ -173,7 +174,35 @@ export type ImportRecord = {
 };
 export type Preview = {
   mapping_revision: number; blocking_issues: string[]; declared_settings: Record<string, unknown>;
+  suggested_settings?: { period_start?: string; period_end?: string; note?: string };
   counts: { rows: number; valid: number; with_errors: number; with_warnings: number } | null;
   fields: { name: string; label: string; required: boolean }[];
   rows: { row_number: number; interpretation: string; errors: { column: string; message: string }[]; warnings: { message: string }[] }[];
 };
+
+export type AttentionItem = {
+  kind: string; severity: 'high' | 'medium' | 'low'; title: string; why: string; action: string; href: string;
+  ref?: string; supplier_id?: string; external_po_number?: string; candidates?: string[];
+};
+export type OpenOrderLinkView = {
+  supplier_id: string; supplier: string | null; external_po_number: string;
+  status: 'linked_exact' | 'linked_by_person' | 'separate_by_person' | 'suggested' | 'separate';
+  po_number: string | null; candidates: { po_id: string; number: string; status: string }[];
+  lines: { sku: string | null; outstanding: string; confirmed: boolean }[];
+};
+export type PosEvidence = {
+  source: string; received_at: string; reported_entered_at: string | null; this_receipt_units: string;
+  reading_before: { qty: string; at: string } | null; reading_after: { qty: string; at: string } | null;
+  latest_reading: { qty: string; at: string } | null;
+  window?: { from: string; to: string }; units_received_in_window?: string; units_sold?: string;
+  refunds_restocked?: string; refunds_restock_unknown?: string; expected_after?: string; unexplained?: string;
+  assessment: string; explanation: string;
+};
+export type ConnectorAccount = {
+  id: string; provider: string; environment: string; merchant_id: string; display_name: string | null; status: string;
+  token_expires_at: string | null; last_success_at: string | null; last_error: string | null;
+  sync_state: { sales_synced_through?: string; token_refreshed_at?: string;
+    reconciliations?: { at: string; window: string; recovered_sales_lines: number; unmapped_items: number; stock_readings: number }[] };
+  locations: { external_location_id: string; location_id: string }[];
+};
+export type DevInfo = { environment: string; auth_mode: string; send_mode: string; square_environment: string };

@@ -11,12 +11,34 @@ import pytest
 
 from clawbot.domain.errors import ValidationFailed
 from clawbot.domain.imports import files, values as v
+from sqlalchemy import text
+
 from clawbot.persistence.db import transaction
 from clawbot.workflows import import_worker
 from tests.test_imports import (
     PRICE_LIST, SALES, _apply, _confirm_import, _csv, _mapping, _preview, _sales_upload, _upload, _xlsx, store,  # noqa: F401
 )
 from tests.test_suppliers import _approvable_supplier, _confirm
+
+
+def _set_history(store, history: list[tuple[str, datetime]]) -> None:
+    import json
+
+    with transaction() as s:
+        s.execute(text("UPDATE locations SET sales_feed = :feed, sales_feed_since = :since, "
+                       "sales_feed_history = CAST(:h AS jsonb) WHERE id = :id"),
+                  {"feed": history[-1][0], "since": history[-1][1], "id": store.location_id,
+                   "h": json.dumps([{"feed": f, "since": t.isoformat()} for f, t in history])})
+
+
+def _was_square_until(store, until: datetime) -> None:
+    """The POS recorded this location's sales earlier (since 2026-01-01)."""
+    _set_history(store, [("square", datetime(2026, 1, 1, tzinfo=timezone.utc))])
+
+
+def _files_again(store, since: datetime) -> None:
+    """… and files took over again at `since` — but only from then on: the POS keeps its period."""
+    _set_history(store, [("square", datetime(2026, 1, 1, tzinfo=timezone.utc)), ("files", since)])
 
 
 def _now_iso(**delta) -> str:
@@ -243,6 +265,7 @@ def test_order_already_recorded_by_another_path_is_not_counted_twice(store):
     from clawbot.domain import sales
     from clawbot.policies.permissions import system
 
+    _was_square_until(store, datetime(2026, 10, 1, 14, 15, tzinfo=timezone.utc))
     with transaction() as s:  # e.g. the Square connector recorded T-1001 with its own line UIDs
         sales.record_sales_line(
             s, tenant_id=uuid.UUID(store.tenant_id), actor=system("square-sync"),
@@ -251,10 +274,13 @@ def test_order_already_recorded_by_another_path_is_not_counted_twice(store):
             key_scheme="provider_line", sold_at=datetime(2026, 10, 1, 14, 15, tzinfo=timezone.utc),
             quantity=Decimal(2), line_type="sale",
         )
+    _files_again(store, datetime(2026, 10, 1, 14, 15, tzinfo=timezone.utc) + timedelta(hours=1))
     done = _apply(store, _sales_upload(store, SALES).json(), accept_row_errors=True)
     assert done["summary"]["applied_counts"] == {"error": 2, "applied": 2}  # both T-1001 rows flagged
     errors = store.client.get(f"/v1/imports/{done['id']}/errors.csv", headers=store.headers()).text
-    assert "through another path (provider_line)" in errors
+    # Square owns that period, so the file's copy is refused by the sales-source rule (the older
+    # "recorded through another path" check stays behind it as a backstop).
+    assert errors.count("Square records Main St's sales") == 2
 
 
 
@@ -316,6 +342,7 @@ def test_r2_new_error_after_confirm_fails_whole_import_unless_accepted(store):
     from clawbot.policies.permissions import system
 
     def record_t1002_elsewhere():
+        _was_square_until(store, datetime(2026, 10, 2, 19, 40, tzinfo=timezone.utc))
         with transaction() as s:
             sales.record_sales_line(
                 s, tenant_id=uuid.UUID(store.tenant_id), actor=system("square-sync"),
@@ -324,6 +351,7 @@ def test_r2_new_error_after_confirm_fails_whole_import_unless_accepted(store):
                 key_scheme="provider_line", sold_at=datetime(2026, 10, 2, 19, 40, tzinfo=timezone.utc),
                 quantity=Decimal(1), line_type="sale",
             )
+        _files_again(store, datetime(2026, 10, 2, 19, 40, tzinfo=timezone.utc) + timedelta(hours=1))
 
     imp = _sales_upload(store, SALES).json()
     assert _confirm_import(store, imp).status_code == 202

@@ -13,6 +13,8 @@ or cancelled) — otherwise received orders would block reorders forever.
 
 from __future__ import annotations
 
+import dataclasses
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -22,9 +24,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clawbot.domain import audit, catalog, data_version, suppliers, tenancy
-from clawbot.domain.errors import ValidationFailed
+from clawbot.domain.errors import NotFound, ValidationFailed
 from clawbot.domain.units import QTY_SCALE
-from clawbot.persistence.models import ExternalOpenOrderLine
+from clawbot.persistence.models import ExternalOpenOrderLine, OpenOrderLink, PurchaseOrder
 from clawbot.policies.permissions import Actor, authorize
 
 
@@ -147,3 +149,115 @@ def close_missing_from_report(
                      after={"outstanding_qty": "0"}, reason=f"Not listed in complete report {source_ref}")
     session.flush()
     return closed
+
+
+# ---------------------------------------------------------------------------
+# Is an export's order one of Tabula's own POs?
+# ---------------------------------------------------------------------------
+
+
+def _exact(number: str) -> str:
+    return re.sub(r"\s+", "", number).upper()
+
+
+def _alnum(number: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", number.upper())
+
+
+def _digits(number: str) -> str:
+    d = re.sub(r"\D", "", number)
+    return d.lstrip("0") or ("0" if d else "")
+
+
+def _prefix(number: str) -> str:
+    """Letters before the digits ("PO-00080" → "PO", "INV-80" → "INV", "80" → "")."""
+    return re.match(r"[A-Z]*", _alnum(number)).group(0)
+
+
+@dataclasses.dataclass(frozen=True)
+class Link:
+    status: str  # linked_exact | linked_by_person | separate_by_person | suggested | separate
+    po_id: uuid.UUID | None = None
+    po_number: str | None = None
+    candidates: tuple[str, ...] = ()
+
+
+def links(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID) -> dict[tuple[uuid.UUID, str], Link]:
+    """
+    For every order number in open-order exports at this location: is it one of Tabula's POs?
+
+    Only the supplier and the order number are compared — never products or quantities, so two
+    different orders for the same item are never merged. Same supplier and the same number
+    (ignoring spaces and case) → the same order, counted once from Tabula's own lines. A number that
+    only matches after dropping punctuation or leading zeros ("PO00080", "80" vs "PO-00080") is a
+    suggestion: it is not counted until a person decides, and the plan says so on that item.
+    """
+    numbers = session.execute(select(ExternalOpenOrderLine.supplier_id, ExternalOpenOrderLine.external_po_number).where(
+        ExternalOpenOrderLine.tenant_id == tenant_id, ExternalOpenOrderLine.location_id == location_id,
+        ExternalOpenOrderLine.outstanding_qty > 0).distinct()).all()
+    if not numbers:
+        return {}
+    pos = session.execute(select(PurchaseOrder.id, PurchaseOrder.supplier_id, PurchaseOrder.number).where(
+        PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.location_id == location_id,
+        PurchaseOrder.sent_at.is_not(None))).all()
+    decided = {(d.supplier_id, d.external_po_number): d for d in session.scalars(select(OpenOrderLink).where(
+        OpenOrderLink.tenant_id == tenant_id, OpenOrderLink.location_id == location_id))}
+    numbers_by_id = {pid: number for pid, _, number in pos}
+    out: dict[tuple[uuid.UUID, str], Link] = {}
+    for supplier_id, number in numbers:
+        mine = [(pid, n) for pid, sid, n in pos if sid == supplier_id]
+        d = decided.get((supplier_id, number))
+        if d is not None:
+            out[(supplier_id, number)] = (Link("linked_by_person", d.po_id, numbers_by_id.get(d.po_id))
+                                          if d.decision == "same_order" else Link("separate_by_person"))
+            continue
+        exact = [(pid, n) for pid, n in mine if _exact(n) == _exact(number)]
+        if exact:
+            out[(supplier_id, number)] = Link("linked_exact", exact[0][0], exact[0][1])
+            continue
+        near = [n for _, n in mine if (_alnum(n) and _alnum(n) == _alnum(number))
+                or (_digits(number) and _digits(n) == _digits(number)
+                    and (not _prefix(number) or not _prefix(n) or _prefix(number) == _prefix(n)))]
+        out[(supplier_id, number)] = Link("suggested", candidates=tuple(near)) if near else Link("separate")
+    return out
+
+
+def decide_link(session: Session, *, tenant_id: uuid.UUID, actor: Actor, location_id: uuid.UUID,
+                supplier_id: uuid.UUID, external_po_number: str, decision: str, po_id: uuid.UUID | None,
+                note: str | None) -> OpenOrderLink:
+    """A person says whether an export's order number is one of Tabula's POs (or a different order)."""
+    authorize(actor, "po.draft")
+    if decision not in ("same_order", "different_order"):
+        raise ValidationFailed("decision must be same_order or different_order")
+    tenancy.get_location(session, tenant_id=tenant_id, location_id=location_id)
+    exists = session.scalar(select(ExternalOpenOrderLine.id).where(
+        ExternalOpenOrderLine.tenant_id == tenant_id, ExternalOpenOrderLine.location_id == location_id,
+        ExternalOpenOrderLine.supplier_id == supplier_id, ExternalOpenOrderLine.external_po_number == external_po_number).limit(1))
+    if exists is None:
+        raise NotFound(f"No open order {external_po_number} from that supplier at this location")
+    if decision == "same_order":
+        po = session.scalars(select(PurchaseOrder).where(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.id == po_id)).one_or_none()
+        if po is None or po.supplier_id != supplier_id or po.location_id != location_id or po.sent_at is None:
+            raise ValidationFailed("Pick a sent Tabula order from the same supplier and location")
+    else:
+        po_id = None
+    # Upsert: two people deciding the same number at once end with the later decision, not an error.
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    session.execute(pg_insert(OpenOrderLink).values(
+        id=uuid.uuid4(), tenant_id=tenant_id, supplier_id=supplier_id, location_id=location_id,
+        external_po_number=external_po_number, decision=decision, po_id=po_id, note=note,
+        decided_by_user_id=actor.user_id, decided_at=datetime.now(timezone.utc),
+    ).on_conflict_do_update(
+        index_elements=["tenant_id", "supplier_id", "location_id", "external_po_number"],
+        set_={"decision": decision, "po_id": po_id, "note": note, "decided_by_user_id": actor.user_id,
+              "decided_at": datetime.now(timezone.utc)}))
+    link = session.scalars(select(OpenOrderLink).where(
+        OpenOrderLink.tenant_id == tenant_id, OpenOrderLink.supplier_id == supplier_id,
+        OpenOrderLink.location_id == location_id, OpenOrderLink.external_po_number == external_po_number)
+        .execution_options(populate_existing=True)).one()
+    data_version.bump(session, tenant_id)
+    audit.record(session, tenant_id=tenant_id, actor=actor, action="open_order.link_decided", object_type="open_order_link",
+                 object_id=link.id, after={"external_po_number": external_po_number, "decision": decision,
+                                           "po_id": str(po_id) if po_id else None}, reason=note)
+    return link

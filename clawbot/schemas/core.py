@@ -63,6 +63,8 @@ class LocationOut(_Orm):
     region: str | None
     postal_code: str | None
     country: str | None
+    sales_feed: str
+    sales_feed_since: datetime | None
     created_at: datetime
 
 

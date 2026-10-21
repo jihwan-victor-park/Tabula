@@ -29,6 +29,9 @@ class FakeSquare:
     fail_next: list[int] = field(default_factory=list)  # status codes to return before succeeding
     requests: list[tuple[str, str]] = field(default_factory=list)
     revoked: bool = False
+    refresh_token: str = "mock-refresh-token"
+    expires_at: str = "2099-01-01T00:00:00Z"
+    refreshes: int = 0
 
     @classmethod
     def demo(cls) -> "FakeSquare":
@@ -87,9 +90,19 @@ class FakeSquare:
             body = json.loads(request.content)
             if body.get("grant_type") == "authorization_code" and body.get("code") != "mock-code":
                 return httpx.Response(401, json={"errors": [{"category": "AUTHENTICATION_ERROR", "code": "UNAUTHORIZED"}]})
+            if body.get("grant_type") == "refresh_token":
+                if self.revoked or body.get("refresh_token") != self.refresh_token:
+                    return httpx.Response(401, json={"errors": [{"category": "AUTHENTICATION_ERROR", "code": "UNAUTHORIZED"}]})
+                self.refreshes += 1
+                self.access_token = f"mock-access-token-{self.refreshes + 1}"
+                self.refresh_token = f"mock-refresh-token-{self.refreshes + 1}"
+                return httpx.Response(200, json={"access_token": self.access_token, "token_type": "bearer",
+                                                 "expires_at": self.expires_at, "merchant_id": self.merchant_id,
+                                                 "refresh_token": self.refresh_token})
+            self.revoked = False
             return httpx.Response(200, json={"access_token": self.access_token, "token_type": "bearer",
-                                             "expires_at": "2099-01-01T00:00:00Z", "merchant_id": self.merchant_id,
-                                             "refresh_token": "mock-refresh-token"})
+                                             "expires_at": self.expires_at, "merchant_id": self.merchant_id,
+                                             "refresh_token": self.refresh_token})
         if path == "/oauth2/revoke":
             self.revoked = True
             return httpx.Response(200, json={"success": True})

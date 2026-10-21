@@ -16,14 +16,23 @@ Layout: `clawbot/api/app.py` (single app) · `clawbot/api/v1/` (routers) · `cla
 
 In dev auth mode send `X-Dev-User: you@example.com`; every tenant-scoped call also needs `X-Tenant-Id`, which the server checks against your membership. Stock changes require an `Idempotency-Key` header. Dev auth is accepted only with `TABULA_ENV=development|test` and only from loopback clients without `X-Forwarded-For`.
 
-### Browser flow (imports → plan → PO drafts → approve → captured test send)
+### Browser flow
 
 ```bash
 (cd demo-ui && npm install)
-scripts/dev.sh --seed     # migrates, seeds "Paws & Co (demo)", starts API :8080, 3 workers, UI :5173
+scripts/dev.sh            # migrates, starts API :8080, import / connector / PO workers, UI :5173
 ```
 
-Open http://127.0.0.1:5173/ops/setup and sign in as `owner@pawsandco.example` (or `manager@pawsandco.example`, who can draft but not approve). The seed prints the sample files to import (`var/demo/*.csv`) and the dates to declare. Sending runs in **capture** mode: an approved order is stored in Tabula as a test message and is never delivered. Supplier answers are entered by a person (paste, .txt/.eml/.csv upload, or a labelled mock reply in capture mode) and applied only after review; deliveries are recorded on Receiving. `scripts/ui_walkthrough.py` drives the whole flow (imports → plan → PO → approval → capture → partial acceptance → plan → partial receipt with damage → worker restart → other workspace) and saves screenshots to `docs/screenshots/cp7/` (expects a freshly seeded workspace; `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome).
+Open http://127.0.0.1:5173/ops/setup, type any email, press **Continue**, then **Create a demo store** (development only):
+a fictional "Paws & Co (demo)" with suppliers, 28 days of sales, a stock count and an open order already imported.
+Then: **Today** (what needs attention, the plan and why) → **Create PO drafts** → order → submit → approve (owner) →
+supplier reply (paste / file / mock) → **Receiving** → **Connections** (Square: `mock` by default, Sandbox once configured).
+
+- Sending runs in **capture** mode: an approved order is stored in Tabula as a test message and never delivered.
+- `scripts/dev.sh --seed` also creates the demo workspace for `owner@pawsandco.example` (files in `var/demo/` not imported — the import screens suggest the dates).
+- Browser walkthroughs with screenshots: `scripts/ui_walkthrough.py` (order → reply → receipt, `docs/screenshots/cp7/`, needs a fresh `--seed` DB) and `scripts/ui_walkthrough_store.py` (owner path, `docs/screenshots/store-readiness/`). `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome.
+- Square Sandbox: settings and the one-command check in `docs/SQUARE_SETUP.md` §6 (`scripts/square_sandbox_check.py`).
+- Real customer data: `docs/CUSTOMER_DATA_REQUEST.md` (what to ask for, `clawbot.devtools.anonymize`, `clawbot.devtools.compare_orders`). No customer data has been used yet.
 
 Tabula is a multi-agent commerce intelligence platform for small business operators. It has two interconnected subsystems:
 

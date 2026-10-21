@@ -14,6 +14,14 @@ export SQUARE_ENVIRONMENT="${SQUARE_ENVIRONMENT:-mock}"
 export TABULA_CORS_ORIGINS=http://127.0.0.1:5173
 PY=.venv/bin/python
 mkdir -p var/log
+# Development-only key for stored connector tokens: created once under var/ (git-ignored, owner-readable only).
+# Production uses a key from the secret store (docs/SQUARE_SETUP.md).
+if [[ -z "${TABULA_TOKEN_ENCRYPTION_KEY:-}" ]]; then
+  if [[ ! -f var/dev_token_encryption_key ]]; then
+    (umask 077; "$PY" -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" > var/dev_token_encryption_key)
+  fi
+  export TABULA_TOKEN_ENCRYPTION_KEY="$(cat var/dev_token_encryption_key)"
+fi
 
 "$PY" -m alembic upgrade head
 if [[ "${1:-}" == "--seed" ]]; then

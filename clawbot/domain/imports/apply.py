@@ -136,7 +136,7 @@ def _apply_sales_row(session: Session, imp: Import, ctx: kinds.Context, actor: A
         location_id=uuid.UUID(imp.context["location_id"]), source_system=imp.context["source_system"],
         external_order_id=v["order_id"], external_line_key=v["line_key"], key_scheme=v["key_scheme"],
         sold_at=v["sold_at"], quantity=v["quantity"], line_type=v["line_type"], unit_price=v["unit_price"],
-        currency=v["currency"], import_id=imp.id,
+        currency=v["currency"], import_id=imp.id, restock=v.get("restock"),
     )
     if recorded.outcome == "conflict":
         raise DomainError(

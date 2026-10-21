@@ -93,4 +93,5 @@ def load_item(data: dict[str, Any]) -> ItemInputs:
         min_qty=_dec(data["min_qty"]),
         max_qty=_dec(data["max_qty"]),
         excluded=data["excluded"],
+        notes=tuple(data.get("notes", ())),
     )

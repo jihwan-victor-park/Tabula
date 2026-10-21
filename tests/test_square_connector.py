@@ -68,6 +68,14 @@ def _sync(api, account, kind, **body):
     connector_worker.run_once()
 
 
+def _square_sales(api, since: datetime):
+    """Make Square this location's sales record from `since` (one sales source at a time)."""
+    resp = api.client.put(f"/v1/locations/{api.location_id}/sales-feed", json={"feed": "square", "since": since.isoformat()},
+                          headers=api.headers())
+    assert resp.status_code == 200, resp.text
+    return resp
+
+
 def _confirm_proposals(api):
     for m in api.get("/v1/external-mappings", params={"status": "suggested"}).json():
         api.post(f"/v1/external-mappings/{m['id']}/decision", {"decision": "confirmed", "variant_id": m["variant_id"]})
@@ -170,6 +178,7 @@ def test_sales_sync_records_sales_and_refunds_once(shop, fake):
     fake.add_order("ORD3", _iso(now - timedelta(days=1)), [("L1", "VAR_UNKNOWN", "5", 100)])
     fake.add_order("ORD4", _iso(now - timedelta(hours=5)), [("L1", "VAR_LITTER_20", "3", 2099)], location_id="LOC_OTHER")
     account = _ready(shop, fake)
+    _square_sales(shop, now - timedelta(days=30))
     window = {"start": (now - timedelta(days=7)).isoformat(), "end": now.isoformat()}
     _sync(shop, account, "sales", **window)
     lines = shop.get("/v1/sales-lines").json()
@@ -189,8 +198,14 @@ def test_sales_already_imported_by_csv_are_not_counted_twice(shop, fake):
     rows = [["Date", "Transaction ID", "SKU", "Qty"], [(now - timedelta(days=2)).isoformat(), "ORD1", "LITTER-20", "2"]]
     _apply(shop, _upload(shop, "sales", _csv(rows), location_id=shop.location_id, source_system="square").json())
     account = _ready(shop, fake)
+    # Switching Square on for a period the files already cover is refused …
+    refused = shop.client.put(f"/v1/locations/{shop.location_id}/sales-feed",
+                              json={"feed": "square", "since": (now - timedelta(days=7)).isoformat()}, headers=shop.headers())
+    assert refused.status_code == 409 and "latest_recorded" in refused.json()["details"]
+    # … so Square takes over from now; its copy of the earlier order is not recorded.
+    _square_sales(shop, now)
     _sync(shop, account, "sales", start=(now - timedelta(days=7)).isoformat(), end=now.isoformat())
-    assert len(shop.get("/v1/sales-lines").json()) == 1  # Square's copy of ORD1 went to review instead
+    assert len(shop.get("/v1/sales-lines").json()) == 1
 
 
 def test_inventory_sync_writes_snapshots_used_by_replenishment(shop, fake):
@@ -255,6 +270,7 @@ def test_webhook_events_are_stored_once_and_reread_current_state(shop, fake):
 
 def test_webhook_order_event_records_the_completed_order(shop, fake):
     _ready(shop, fake)
+    _square_sales(shop, datetime.now(timezone.utc) - timedelta(days=1))
     fake.add_order("ORD9", _iso(datetime.now(timezone.utc) - timedelta(minutes=10)), [("L1", "VAR_LITTER_20", "4", 2099)])
     _webhook(shop, {"merchant_id": fake.merchant_id, "type": "order.updated", "event_id": "E-9",
                     "data": {"type": "order", "id": "ORD9"}})

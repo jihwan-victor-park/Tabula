@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,7 +41,7 @@ class LinkBody(BaseModel):
 
 
 class SyncBody(BaseModel):
-    kind: Literal["catalog", "inventory", "sales"]
+    kind: Literal["catalog", "inventory", "sales", "reconcile"]
     start: AwareDatetime | None = Field(default=None, description="sales: window start (default 90 days ago)")
     end: AwareDatetime | None = Field(default=None, description="sales: window end (default now)")
 
@@ -71,7 +73,7 @@ def post_authorize(response: Response, request: Request, session: Session = DbSe
 
 @router.get("/connectors/square/callback")
 def get_callback(request: Request, state: str, code: str | None = None, error: str | None = None,
-                 session: Session = DbSession) -> dict[str, Any]:
+                 session: Session = DbSession) -> Any:
     """OAuth redirect target. Authenticated by the single-use `state` plus the starting browser's cookie."""
     # Consume the state first, in its own transaction: whatever happens next, it cannot be replayed.
     with transaction() as consume:
@@ -79,6 +81,10 @@ def get_callback(request: Request, state: str, code: str | None = None, error: s
     if error or not code:
         raise ValidationFailed(f"Square authorization was not completed ({error or 'no code'})")
     account = square.complete_authorization(session, claim=claim, code=code)
+    if "text/html" in request.headers.get("accept", ""):
+        # A person's browser coming back from Square: land on the Connections screen.
+        ui = os.getenv("TABULA_UI_URL", "http://127.0.0.1:5173").rstrip("/")
+        return RedirectResponse(f"{ui}/ops/connections?connected={account.id}", status_code=303)
     return _account_view(session, account)
 
 
@@ -103,9 +109,9 @@ def post_sync(account_id: uuid.UUID, body: SyncBody, session: Session = DbSessio
     """Queue a sync job; the connector worker runs it. Re-running is safe (idempotent)."""
     square.get_account(session, tenant_id=ctx.tenant_id, account_id=account_id)
     payload: dict[str, Any] = {"account_id": str(account_id), "kind": body.kind}
-    if body.kind == "sales":
+    if body.kind in ("sales", "reconcile"):
         end = body.end or datetime.now(timezone.utc)
-        start = body.start or end - timedelta(days=90)
+        start = body.start or end - (timedelta(days=90) if body.kind == "sales" else timedelta(days=3))
         if start >= end:
             raise ValidationFailed("start must be before end")
         payload.update(start=start.isoformat(), end=end.isoformat())

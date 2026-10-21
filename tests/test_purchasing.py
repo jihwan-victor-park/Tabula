@@ -273,6 +273,11 @@ def test_refresh_loads_the_new_recommendation_instead_of_hiding_it(ready):
 def test_write_uncommitted_at_plan_time_is_still_caught(ready):
     """A sale recorded in a transaction that was open while the plan and draft were made."""
     tenant, variant, location = (uuid.UUID(x) for x in (ready.tenant_id, ready.variant["id"], ready.location_id))
+    with transaction() as s:  # this location's sales come from the POS (the late sale is a Square sale)
+        s.execute(text("UPDATE locations SET sales_feed = 'square', sales_feed_since = now() - interval '30 days', "
+                       "sales_feed_history = jsonb_build_array(jsonb_build_object('feed', 'square', 'since', "
+                       "to_char((now() - interval '30 days') AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"+00:00\"'))) "
+                       "WHERE id = :id"), {"id": ready.location_id})
     open_tx = new_session()
     open_tx.begin()
     sales.record_sales_line(open_tx, tenant_id=tenant, actor=system("square-sync"), variant_id=variant,

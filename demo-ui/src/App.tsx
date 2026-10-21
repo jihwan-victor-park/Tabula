@@ -7,6 +7,7 @@ import { OrdersPage } from './pages/OrdersPage';
 import { PriceScoutPage } from './pages/PriceScoutPage';
 import { SalesHistoryPage } from './pages/SalesHistoryPage';
 import { TrendsPage } from './pages/TrendsPage';
+import { ConnectionsPage } from './ops/ConnectionsPage';
 import { ImportsPage } from './ops/ImportsPage';
 import { OrderPage, OrdersPage as PurchaseOrdersPage } from './ops/OrdersPage';
 import { ReceiveOrderPage, ReceivingPage } from './ops/ReceivingPage';
@@ -27,6 +28,7 @@ export function App() {
       <Route path="/ops/orders/:id" element={<OrderPage />} />
       <Route path="/ops/receiving" element={<ReceivingPage />} />
       <Route path="/ops/receiving/:id" element={<ReceiveOrderPage />} />
+      <Route path="/ops/connections" element={<ConnectionsPage />} />
       <Route path="/ops/setup" element={<SetupPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/agents" element={<AgentsPage />} />

@@ -216,8 +216,10 @@ def main() -> None:
 
         # 11. Restart the PO worker, reload: state comes from the database.
         subprocess.run(["pkill", "-f", "clawbot.workflows.po_worker"], check=False)
-        worker = subprocess.Popen([str(ROOT / ".venv/bin/python"), "-m", "clawbot.workflows.po_worker"], cwd=ROOT,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        env = {**os.environ, "DATABASE_URL": os.getenv("DATABASE_URL", "postgresql+psycopg://localhost/tabula_dev"),
+               "TABULA_ENV": "development", "TABULA_AUTH_MODE": "dev", "TABULA_SUPPLIER_SEND_MODE": "capture"}
+        worker = subprocess.Popen([str(ROOT / ".venv/bin/python"), "-m", "clawbot.workflows.po_worker"], cwd=ROOT, env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         page.goto(phillips_url)
         expect(page.get_by_text("Partially received").first).to_be_visible(timeout=15000)
         shot(page, out, "20_po_after_worker_restart_and_reload")
@@ -232,8 +234,8 @@ def main() -> None:
         page.goto(target)
         expect(page.get_by_text(re.compile("404"))).to_be_visible(timeout=15000)
         shot(page, out, "21_other_workspace_404")
-        worker.terminate()
         browser.close()
+        print(f"po_worker restarted by this walkthrough keeps running (pid {worker.pid})")
 
 
 if __name__ == "__main__":

@@ -66,21 +66,61 @@ TABULA_TOKEN_ENCRYPTION_KEY=                 # 저장 토큰 암호화 키. 아�
 - webhook은 서명을 확인한 뒤 원본을 먼저 저장하고, event_id로 중복을 제거한다. 처리할 때는 이벤트 본문을 믿지 않고 Square에서 현재 상태를 다시 조회한다.
 - 동기화가 끝난 기간은 sales coverage로 기록한다. 그 기간 안의 판매 없는 날은 "판매 0"으로 본다.
 
-## 5. Sandbox에서 직접 확인해야 할 것 (아직 미검증)
+## 5. 항목별 상태 — mock 검증 vs Sandbox 실호출 검증
 
-코드는 Square 공개 API 문서의 형식을 따라 작성했고, mock으로만 테스트했다. Sandbox 키를 넣은 뒤 다음을 확인한다.
+Sandbox 열은 `scripts/square_sandbox_check.py`가 통과한 항목만 ✓로 바꾼다. **지금은 자격증명이 없어 Sandbox 실호출은 한 번도 하지 않았다.**
 
-- [ ] OAuth authorize/token/revoke 응답 필드(`merchant_id`, `expires_at`, `refresh_token`)
-- [ ] `/v2/catalog/list?types=ITEM`의 variation 필드(`sku`, `upc`)
-- [ ] `/v2/orders/search`의 closed_at 필터, 정렬, cursor, 환불(`returns[].return_line_items`)이 실제로 어느 order에 붙는지
-- [ ] `/v2/inventory/counts/batch-retrieve`의 `states`·`updated_after` 동작
-- [ ] webhook 서명(URL + body, HMAC-SHA256, base64)과 이벤트 payload 구조
-- [ ] access token 만료 주기와 refresh 흐름(구현 예정: CP4 후속)
-- [ ] rate limit 응답과 `Retry-After`
+| 항목 | 구현 | mock 검증 | Sandbox 실호출 |
+|---|---|---|---|
+| OAuth 연결(state 1회용·브라우저 binding·토큰 암호화) | ✓ | ✓ | ✗ 미검증 |
+| 상품(catalog) 가져오기 → 매핑 제안 | ✓ | ✓ | ✗ |
+| 재고(counts) 가져오기 → snapshot | ✓ | ✓ | ✗ |
+| 완료 주문·환불 가져오기 | ✓ | ✓ | ✗ (실제 환불이 별도 order로 오는지 확인 필요) |
+| webhook 서명 검증·원본 저장·event_id 중복 제거 | ✓ | ✓ | ✗ (공개 HTTPS 터널 필요) |
+| access token 갱신(만료 7일 전, 거부 시 needs_reauth) | ✓ | ✓ | ✗ |
+| 연결 해제 → 재연결(같은 판매자: 위치 연결·이력 유지) | ✓ | ✓ | ✗ |
+| 정기 동기화(판매 15분·재고 30분) + 야간 최근 3일 재대조(누락 webhook 복구 기록) | ✓ | ✓ | ✗ |
+| 판매 원본 소유권: 위치별 files ↔ Square, 전환 시각 이후만 Square | ✓ | ✓ | (정책 — Sandbox 무관) |
+| 환불 ≠ 재입고: 환불은 수요를 줄이고, 재입고 여부를 모르면 재고에 더하지 않음 | ✓ | ✓ | ✗ (Square가 재입고를 어디에 기록하는지 확인 필요) |
+| 입고를 Square 재고에 반영(쓰기) | ✗ 읽기 전용 | — | — |
 
-## 6. 아직 없는 것 (후속)
+### 판매 원본 규칙 (CSV ↔ Square)
 
-- Access token 자동 갱신(refresh) job
-- 야간 전체 대조(reconciliation) job과 webhook 누락 복구 polling 스케줄 (CP4 gate의 "webhook 유실 후 polling 복원")
-- 입고를 Square 재고에 반영하는 `post_receipt` (CP8, `INVENTORY_WRITE` 권한 필요)
-- 연결 상태 화면 (CP10)
+- 위치마다 판매 원본은 하나다. 기본은 **files**(업로드)다. Square 위치를 연결해도 판매 원본은 자동으로 바뀌지 않는다.
+- **Connections → "Use Square for sales"**로 전환 시각 T를 정한다(기본: 지금).
+  - T 이후 판매는 Square에서만 받는다. 같은 기간의 CSV 행은 미리보기에서 오류가 된다.
+  - T 이전 Square 주문은 기록하지 않는다. 그 기간은 파일이 기준이다.
+  - 현재 원본이 이미 T 이후 판매를 기록했다면 전환이 거부된다. 더 늦은 T를 고른다. 같은 판매가 두 번 세어지지 않게 하기 위해서다.
+- 되돌리기(Square → files)도 같은 규칙을 따른다.
+
+### 환불 규칙
+
+- 환불은 그 날의 순판매(수요)를 줄인다.
+- 재고에는 **재입고가 확인된 환불만** 더한다. CSV의 `Restocked` 열이 yes인 경우다. Square Orders API의 환불은 재입고 여부를 알려주지 않으므로 "모름"으로 저장하고 더하지 않는다. Square가 재고를 소유한 위치라면 Square 재고 reading에 이미 반영된다.
+- 입고 대조 화면에서는 재입고 여부를 모르는 환불을 따로 보여준다. 차이가 0이어도 그것만으로 확인 완료로 보지 않는다.
+
+## 6. 사용자가 설정할 것 (한 번에)
+
+비밀값은 `.env` 또는 secret store에만 넣는다. 채팅·git에 넣지 않는다.
+
+1. Square Developer 계정 → 앱 생성 → **Sandbox** 탭.
+2. `.env`에 다음 값을 넣는다(값은 Dashboard에서 복사).
+   - `SQUARE_ENVIRONMENT=sandbox`
+   - `SQUARE_APPLICATION_ID`, `SQUARE_APPLICATION_SECRET`
+   - `TABULA_TOKEN_ENCRYPTION_KEY` (위 2절 명령으로 생성)
+3. 공개 HTTPS 주소를 하나 준비한다. ngrok 또는 Cloudflare Tunnel로 `127.0.0.1:5173`(UI + `/v1` 프록시)을 노출한다.
+   - `SQUARE_REDIRECT_URL=https://<터널>/v1/connectors/square/callback` — Square OAuth(Sandbox)에 같은 값을 등록한다.
+   - `TABULA_UI_URL=https://<터널>` — 연결 후 Connections 화면으로 돌아오는 주소.
+   - Webhook 구독 URL `https://<터널>/v1/connectors/square/webhook`, 이벤트 `order.created`, `order.updated`, `inventory.count.updated`, `catalog.version.updated`, `refund.created`, `refund.updated`, `oauth.authorization.revoked`.
+   - `SQUARE_WEBHOOK_URL`(같은 URL), `SQUARE_WEBHOOK_SIGNATURE_KEY`.
+   - 터널을 쓰면 dev 로그인(loopback 전용)이 막힌다. 그때는 터널 주소로 UI를 쓰지 말고, OAuth 콜백과 webhook만 터널로 받는다. 로컬 UI는 `127.0.0.1:5173` 그대로 쓴다.
+4. Sandbox 테스트 판매자 Dashboard에서 location 1개, 상품 2–3개(SKU 입력), 재고, 결제·환불 몇 건을 만든다.
+5. 앱 **Connections → Connect Square**로 Sandbox 판매자를 승인한다. 이어서 위치를 연결하고, catalog 동기화 후 매핑 제안을 확정한다.
+6. 확인 명령을 실행한다.
+
+   ```bash
+   set -a; source .env; set +a
+   .venv/bin/python scripts/square_sandbox_check.py
+   ```
+
+   결과는 `var/square_sandbox_report.json`에 저장된다. 통과한 항목만 위 표와 `docs/CHECKPOINTS.md`의 D 항목에 반영한다.

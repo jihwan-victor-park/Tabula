@@ -97,6 +97,8 @@ SPECS: dict[str, KindSpec] = {
             FieldSpec("unit_price", "Unit price", ("unit price", "price", "item price")),
             FieldSpec("currency", "Currency", ("currency", "ccy")),
             FieldSpec("line_type", "Sale or refund", ("event type", "transaction type", "type", "line type")),
+            FieldSpec("restocked", "Refund put back on the shelf", ("restocked", "restock", "returned to stock",
+                                                                     "return to stock")),
         ),
     ),
     "open_orders": KindSpec(
@@ -242,6 +244,7 @@ class Context:
     supplier_items: dict[str, Any] = field(default_factory=dict)  # price lists: supplier_sku → SupplierItem
     suppliers_by_name: dict[str, Any] = field(default_factory=dict)  # open orders
     supplier_items_by_variant: dict[tuple[uuid.UUID, uuid.UUID], list[Any]] = field(default_factory=dict)
+    location: Any = None  # sales: the location, for its sales source (files vs POS since …)
 
 
 _SKU = v.bounded_text(120)
@@ -416,6 +419,13 @@ def interpret_sales(ctx: Context, number: int, cells: list[str]) -> RowResult:
         if not s.period_start <= local <= s.period_end:
             row.error(ctx.columns.get("sold_at"), f"Sale on {local} is outside the declared period "
                       f"{s.period_start}–{s.period_end}")
+    if sold_at is not None and ctx.location is not None:
+        from clawbot.domain.sales import feed_problem
+
+        problem = feed_problem(ctx.location, sold_at=sold_at, from_connector=False)
+        if problem:
+            row.error(ctx.columns.get("sold_at"), problem)
+    restock = _parse(row, ctx, cells, "restocked", v.boolean) if line_type == "refund" else None
     # Keys use the file's own identifiers, never what Tabula resolved them to: if a
     # barcode is later re-linked to another item, a re-import still matches.
     sku_in, barcode_in = row.values.get("_sku_input"), row.values.get("_barcode_input")
@@ -424,7 +434,7 @@ def interpret_sales(ctx: Context, number: int, cells: list[str]) -> RowResult:
     row.values["source_item"] = source_item
     row.interpretation = f"{order_id}: {line_type} of {abs(quantity) if quantity is not None else '?'}"
     row.values.update(order_id=order_id, line_id=line_id, sold_at=sold_at, quantity=quantity, line_type=line_type,
-                      unit_price=unit_price, currency=currency, variant_id=variant_id)
+                      unit_price=unit_price, currency=currency, variant_id=variant_id, restock=restock)
     return row
 
 

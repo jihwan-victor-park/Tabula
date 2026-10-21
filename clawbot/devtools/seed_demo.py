@@ -117,11 +117,11 @@ def write_samples(today) -> dict[str, Path]:
     return files
 
 
-def seed(apply_files: bool) -> None:
+def seed(apply_files: bool, owner: str = OWNER) -> None:
     client = _client()
-    me = Api(client, OWNER)
+    me = Api(client, owner)
     tenant = me.call("POST", "/tenants", {"name": "Paws & Co (demo)"})
-    api = Api(client, OWNER, tenant["tenant_id"])
+    api = Api(client, owner, tenant["tenant_id"])
     api.call("PUT", "/members", {"auth_subject": f"dev|{MANAGER}", "email": MANAGER, "role": "manager"})
 
     loc = api.call("POST", "/locations", {"name": "Main St", "timezone": STORE_TZ})
@@ -154,7 +154,7 @@ def seed(apply_files: bool) -> None:
         _import_all(api, loc["id"], files, period, count_as_of)
 
     print(f"\nWorkspace  Paws & Co (demo)  tenant {tenant['tenant_id']}")
-    print(f"Owner      {OWNER}   (approves orders)")
+    print(f"Owner      {owner}   (approves orders)")
     print(f"Manager    {MANAGER} (can draft, cannot approve)")
     print(f"Location   Main St, 12 Main St, Brooklyn NY 11201  id {loc['id']}")
     print("Suppliers  Phillips Pet Supply <orders@phillips.example.com>, Coastal Feed Co <po@coastalfeed.example.com>")
@@ -192,8 +192,14 @@ def _import_all(api: Api, location_id: str, files, period, count_as_of) -> None:
             raise SystemExit(f"{kind} import is not clean: {preview['blocking_issues']} {preview['counts']}")
         api.call("POST", f"/imports/{imp['id']}/confirm-mapping", {
             "revision": preview["mapping_revision"], "declared": preview["declared_settings"], "accept_row_errors": False})
-        import_worker.run_once()
-        done = api.call("GET", f"/imports/{imp['id']}")
+        import time
+
+        for _ in range(120):  # a running import worker (scripts/dev.sh) may pick the job up instead
+            import_worker.run_once()
+            done = api.call("GET", f"/imports/{imp['id']}")
+            if done["status"] not in ("confirmed", "applying"):
+                break
+            time.sleep(0.5)
         if done["status"] != "applied":
             raise SystemExit(f"{kind} import ended {done['status']}: {done['failure']}")
 
@@ -201,11 +207,12 @@ def _import_all(api: Api, location_id: str, files, period, count_as_of) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--import", dest="apply_files", action="store_true", help="also import the sample files")
+    parser.add_argument("--owner", default=OWNER, help="owner's email (dev sign-in)")
     args = parser.parse_args(argv)
     if os.getenv("TABULA_ENV") not in ("development", "test") or os.getenv("TABULA_AUTH_MODE") != "dev":
         print("seed_demo runs only with TABULA_ENV=development and TABULA_AUTH_MODE=dev", file=sys.stderr)
         return 2
-    seed(args.apply_files)
+    seed(args.apply_files, args.owner)
     return 0
 
 

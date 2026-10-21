@@ -3,6 +3,7 @@ import { Fragment, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SymbolIcon, cn } from '../components/ui';
 import { api, loadSession, type PlanLine, type PoSummary, type Recommendations } from './api';
+import { AttentionPanel, OpenOrderLinks } from './Attention';
 import { Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, StatusChip, money, num, when } from './kit';
 
 const STALE_TEXT: Record<string, string> = {
@@ -17,7 +18,11 @@ export function TodayPage() {
   return (
     <OpsShell active="today" title="Today — what to order" icon="today">
       <RequireSession>
-        {session?.locationId ? <Plan locationId={session.locationId} /> : (
+        {session?.locationId ? <>
+          <AttentionPanel locationId={session.locationId} />
+          <OpenOrderLinks locationId={session.locationId} />
+          <Plan locationId={session.locationId} />
+        </> : (
           <Panel><EmptyState icon="location_on" title="Pick a store location" body="Choose the location to plan for."><Link className="text-[#E8654A] underline" to="/ops/setup">Workspace</Link></EmptyState></Panel>
         )}
       </RequireSession>
@@ -65,7 +70,7 @@ function Plan({ locationId }: { locationId: string }) {
         <Notice>
           <b>This plan may be out of date.</b>{' '}
           {data.stale_reasons.map((r) => STALE_TEXT[r] ?? `New ${r.replace('newer_', '').replace('_', ' ')} since the plan.`).join(' ')}
-          {data.pending_updates?.length ? ` (${data.pending_updates.join('; ')})` : ''} Recompute before drafting orders.
+          {data.pending_updates?.length ? ` (${data.pending_updates.join('; ')})` : ''} Next: press <b>Recompute plan</b> above before drafting orders.
         </Notice>
       )}
       {!run ? (
@@ -147,7 +152,8 @@ function LineDetail({ line }: { line: PlanLine }) {
           <div className="mb-3 grid grid-cols-3 gap-2 text-center text-[12px]">
             <div className="rounded-[10px] bg-[#FDF5EF] p-2"><div className="text-[#5C7A8A]">Still needed</div><div className="font-mono text-[18px]">{num(line.need_before_held)}</div></div>
             <div className="rounded-[10px] bg-[#FFF8E1] p-2"><div className="text-[#5C7A8A]">Already requested, unconfirmed</div><div className="font-mono text-[18px]">{num(line.held_qty)}</div></div>
-            <div className="rounded-[10px] bg-[#FEF3C7] p-2"><div className="text-[#5C7A8A]">Extra order</div><div className="text-[14px] font-semibold text-[#8A5A00]">On hold — confirm first</div></div>
+            <div className="rounded-[10px] bg-[#FEF3C7] p-2"><div className="text-[#5C7A8A]">Extra order</div><div className="text-[14px] font-semibold text-[#8A5A00]">On hold — confirm first</div>
+              <div className="mt-1 text-[11px]">Next: get the supplier's answer (or update your open-orders file); if it is a Tabula order, record their reply on <a className="underline" href="/ops/orders">Purchase orders</a>.</div></div>
           </div>
         )}
         {line.arrival?.order_date && (

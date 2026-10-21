@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, loadSession, type PoDetail, type PoSummary } from './api';
+import { api, loadSession, type PosEvidence, type PoDetail, type PoSummary } from './api';
 import { Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, StatusChip, num, when } from './kit';
 
 const SENT = ['test_sent', 'delivery_unknown', 'supplier_confirmed', 'changes_proposed', 'partially_received', 'received'];
@@ -132,10 +132,12 @@ export function ReceiveOrderPage() {
                           line {rl.line_no}: arrived {num(rl.arrived)}, damaged {num(rl.damaged)}, +{num(rl.sellable_units)} sellable units
                           {rl.pos_status === 'ledger_posted' && <span className="text-[12px] text-[#065F46]">added to Tabula stock</span>}
                           {rl.pos_status === 'pending_pos' && <>
-                            <span className="text-[12px] font-medium text-[#991B1B]">not in the POS yet — enter it there</span>
+                            <span className="text-[12px] font-medium text-[#991B1B]">not in the POS yet — enter it there (Square is read-only for Tabula)</span>
                             <Button variant="secondary" onClick={() => posEntered.mutate(rl.id)} loading={posEntered.isPending && posEntered.variables === rl.id}>I entered it in the POS</Button>
                           </>}
-                          {rl.pos_status === 'pos_reported' && <span className="text-[12px] text-[#8A5A00]">entered in the POS — confirmed when the next POS stock reading shows it</span>}
+                          {rl.pos_status === 'pos_reported' && <span className="text-[12px] text-[#8A5A00]">entered in the POS — reconcile it below</span>}
+                          {rl.pos_status === 'pos_reconciled' && <span className="text-[12px] text-[#065F46]">reconciled with the POS</span>}
+                          {(rl.pos_status === 'pending_pos' || rl.pos_status === 'pos_reported') && <PosReconcile lineId={rl.id} onDone={refresh} />}
                         </div>
                       ))}
                     </li>
@@ -168,5 +170,54 @@ function IssueRow({ issue, uom, onChange }: { issue: NonNullable<PoDetail['progr
       </> : issue.resolution_eta && <span className="text-[12px] text-[#5C7A8A]">replacement ETA {issue.resolution_eta}</span>}
       <ErrorBox error={resolve.error} />
     </li>
+  );
+}
+
+const ASSESSMENT: Record<string, string> = {
+  consistent: 'Readings agree', consistent_if_refunds_not_restocked: 'Agree only if some refunds were not restocked',
+  explained_if_refunds_restocked: 'Explained if refunds were restocked', receipt_missing_in_pos: 'The POS does not show this delivery',
+  difference: 'Unexplained difference', no_reading_after: 'No POS reading since', no_reading_before: 'No POS reading before',
+};
+
+// Compare the POS stock readings around a receipt and sign off. Never cleared by a reading alone.
+function PosReconcile({ lineId, onDone }: { lineId: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState('');
+  const ev = useQuery({ queryKey: ['pos-evidence', lineId], queryFn: () => api<PosEvidence>(`/receipt-lines/${lineId}/pos-evidence`), enabled: open });
+  const sign = useMutation({
+    mutationFn: (outcome: string) => api(`/receipt-lines/${lineId}/pos-reconcile`, { body: { outcome, note: note || null } }),
+    onSuccess: () => { setOpen(false); onDone(); },
+  });
+  if (!open) return <button className="text-[12px] text-[#E8654A] underline" onClick={() => setOpen(true)}>Compare with the POS</button>;
+  const e = ev.data;
+  return (
+    <div className="mt-2 w-full rounded-[10px] border border-[#F1E4DA] bg-[#FFFAF6] p-3 text-[12px]">
+      {ev.isLoading && <Loading />}
+      <ErrorBox error={ev.error} />
+      {e && <>
+        <div className="mb-1 font-semibold">{ASSESSMENT[e.assessment] ?? e.assessment}</div>
+        <div className="text-[#5C7A8A]">{e.explanation}</div>
+        {e.expected_after != null && (
+          <table className="mt-2 [&_td]:pr-4"><tbody>
+            <tr><td>POS reading before</td><td className="font-mono">{num(e.reading_before?.qty)}</td><td className="text-[#5C7A8A]">{when(e.reading_before?.at)}</td></tr>
+            <tr><td>+ received in between (this and other deliveries)</td><td className="font-mono">{num(e.units_received_in_window)}</td></tr>
+            <tr><td>− sold in between</td><td className="font-mono">{num(e.units_sold)}</td></tr>
+            <tr><td>+ refunds put back on the shelf</td><td className="font-mono">{num(e.refunds_restocked)}</td></tr>
+            <tr><td>= expected</td><td className="font-mono font-semibold">{num(e.expected_after)}</td></tr>
+            <tr><td>POS reading after</td><td className="font-mono font-semibold">{num(e.reading_after?.qty)}</td><td className="text-[#5C7A8A]">{when(e.reading_after?.at)}</td></tr>
+            <tr><td>Unexplained</td><td className="font-mono font-semibold">{num(e.unexplained)}</td></tr>
+            <tr><td className="text-[#5C7A8A]">Refunds with unknown restock</td><td className="font-mono">{num(e.refunds_restock_unknown)}</td></tr>
+          </tbody></table>
+        )}
+        <input className="mt-2 w-full rounded-[8px] border border-[#E8D4C6] px-2 py-1" placeholder="What you checked in the POS (required unless the readings agree)" value={note} onChange={(x) => setNote(x.target.value)} />
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => sign.mutate('matches')} loading={sign.isPending}>POS is right</Button>
+          <Button variant="secondary" onClick={() => sign.mutate('corrected_in_pos')} loading={sign.isPending}>I corrected it in the POS</Button>
+          <Button variant="secondary" onClick={() => sign.mutate('accepted_difference')} loading={sign.isPending}>Accept the difference</Button>
+        </div>
+        <p className="mt-1 text-[11px] text-[#5C7A8A]">Owner or manager. The evidence above is stored with your decision.</p>
+        <ErrorBox error={sign.error} />
+      </>}
+    </div>
   );
 }

@@ -157,6 +157,13 @@ def complete_authorization(session: Session, *, claim: StateClaim, code: str) ->
     if account is not None and account.tenant_id != row.tenant_id:
         raise StateConflict("This Square account is already connected to another Tabula workspace")
     if account is None:
+        # Reconnecting after a disconnect: the same merchant in the same workspace reuses its connection,
+        # so location links, mappings and sync history carry over.
+        account = session.scalars(select(ConnectorAccount).where(
+            ConnectorAccount.tenant_id == row.tenant_id, ConnectorAccount.provider == PROVIDER,
+            ConnectorAccount.environment == cfg.environment, ConnectorAccount.external_merchant_id == merchant_id)
+            .order_by(ConnectorAccount.updated_at.desc()).with_for_update()).first()
+    if account is None:
         account = ConnectorAccount(tenant_id=row.tenant_id, provider=PROVIDER, environment=cfg.environment,
                                    external_merchant_id=merchant_id, created_by_user_id=actor.user_id)
         session.add(account)
@@ -194,6 +201,45 @@ def mark_needs_reauth(session: Session, account: ConnectorAccount, why: str) -> 
     """Square refused our token (revoked or expired): stop syncing until someone reconnects."""
     account.status, account.last_error, account.updated_at = "needs_reauth", why[:2000], _now()
     session.flush()
+
+
+REFRESH_BEFORE = timedelta(days=7)  # Square access tokens last 30 days; refresh well before
+
+
+def refresh_token(session: Session, account: ConnectorAccount, *, force: bool = False) -> bool:
+    """
+    Exchange the refresh token for a new access token when the current one is close to expiry.
+    Returns True if refreshed. A refused refresh means the merchant must reconnect (needs_reauth).
+    """
+    # One refresh at a time per connection: a second worker (or a check script) waits, then sees the new token
+    # instead of replaying the old refresh token (which Square may reject, wrongly asking to reconnect).
+    session.refresh(account, with_for_update=True)
+    if account.status != "active" or not account.refresh_token_enc:
+        return False
+    if not force and account.token_expires_at and account.token_expires_at - _now() > REFRESH_BEFORE:
+        return False
+    cfg = square_config.load()
+    with _oauth_http(cfg) as http:
+        resp = http.post("/oauth2/token", json={
+            "client_id": cfg.application_id or "mock-app", "client_secret": cfg.application_secret or "mock-secret",
+            "grant_type": "refresh_token", "refresh_token": token_crypto.decrypt(account.refresh_token_enc)})
+    if resp.status_code in (400, 401):
+        mark_needs_reauth(session, account, "Square refused to refresh the access token; reconnect")
+        return False
+    if resp.status_code != 200:
+        raise SquareError(resp.status_code, "TOKEN_REFRESH", resp.text[:300])
+    token = resp.json()
+    account.access_token_enc = token_crypto.encrypt(token["access_token"])
+    if token.get("refresh_token"):
+        account.refresh_token_enc = token_crypto.encrypt(token["refresh_token"])
+    account.token_expires_at = (datetime.fromisoformat(token["expires_at"].replace("Z", "+00:00"))
+                                if token.get("expires_at") else None)
+    account.updated_at = _now()
+    state = dict(account.sync_state)
+    state["token_refreshed_at"] = _now().isoformat()
+    account.sync_state = state
+    session.flush()
+    return True
 
 
 def client_for(account: ConnectorAccount) -> SquareClient:
@@ -259,6 +305,19 @@ def link_location(session: Session, *, tenant_id: uuid.UUID, actor: Actor, accou
                  object_id=location_id, before={"inventory_write_owner": before},
                  after={"inventory_write_owner": "square", "square_location": external_location_id})
     return link
+
+
+def has_links(session: Session, account: ConnectorAccount) -> bool:
+    return bool(_links(session, account))
+
+
+def square_owns_sales(session: Session, account: ConnectorAccount) -> bool:
+    """Does any linked store take its sales from Square now?"""
+    from clawbot.persistence.models import Location
+
+    ids = list(_links(session, account).values())
+    return bool(ids) and session.scalar(select(Location.id).where(
+        Location.tenant_id == account.tenant_id, Location.id.in_(ids), Location.sales_feed == "square").limit(1)) is not None
 
 
 def _links(session: Session, account: ConnectorAccount) -> dict[str, uuid.UUID]:
@@ -354,7 +413,9 @@ def sync_sales(session: Session, account: ConnectorAccount, *, start: datetime, 
         return result
     for location_id in links.values():
         location = tenancy.get_location(session, tenant_id=account.tenant_id, location_id=location_id)
-        days = _whole_days(start, end, location.timezone)
+        if location.sales_feed != "square" or location.sales_feed_since is None:
+            continue  # Square is not this location's sales record: say nothing about its coverage
+        days = _whole_days(max(start, location.sales_feed_since), end, location.timezone)
         if days:
             sales.record_coverage(session, tenant_id=account.tenant_id, actor=SYNC_ACTOR, location_id=location_id,
                                   source_system=PROVIDER, source_ref=f"square-sync:{start.isoformat()}/{end.isoformat()}",
@@ -383,7 +444,11 @@ def _record_order(session: Session, account: ConnectorAccount, order: dict[str, 
     if location_id is None:
         result.add("other_location")
         return
+    location = tenancy.get_location(session, tenant_id=account.tenant_id, location_id=location_id)
     for line in normalize.sale_lines(order):
+        if sales.feed_problem(location, sold_at=line.sold_at, from_connector=True):
+            result.add("not_sales_source")  # this location's sales for that time come from files
+            continue
         variant_id = _variant_for(session, account, line.external_variant_id)
         if variant_id is None:
             if _ignored(session, account, line.external_variant_id):

@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, loadSession, saveSession, type Location, type Me } from './api';
+import { api, loadSession, saveSession, type DevInfo, type Location, type Me } from './api';
 import { Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel } from './kit';
 
 export function SetupPage() {
@@ -64,6 +64,7 @@ export function SetupPage() {
               </li>
             ))}
           </ul>
+          <DemoWorkspace user={submitted} onCreated={() => me.refetch()} />
           <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
             <label className="flex flex-col gap-1 text-[13px]">
               New empty workspace
@@ -106,5 +107,20 @@ function LocationPicker() {
         ))}
       </ul>
     </Panel>
+  );
+}
+
+// Development only (the API answers 404 otherwise): a fictional store with its files already imported.
+function DemoWorkspace({ user, onCreated }: { user: string; onCreated: () => void }) {
+  const info = useQuery({ queryKey: ['dev-info'], queryFn: () => api<DevInfo>('/dev/info'), retry: false });
+  const make = useMutation({ mutationFn: () => api('/dev/demo-workspace', { method: 'POST', userOverride: user }), onSuccess: onCreated });
+  if (!info.data) return null;
+  return (
+    <div className="mt-4 rounded-[12px] border border-dashed border-[#B8CFFB] bg-[#EEF4FF] p-3 text-[13px]">
+      <b>Demo store (development only).</b> Creates “Paws & Co (demo)” with fictional suppliers, 28 days of sales, a stock
+      count and an open order already imported — so you can go straight to the plan. Sending stays in {info.data.send_mode} mode.
+      <div className="mt-2"><Button variant="secondary" onClick={() => make.mutate()} loading={make.isPending}>Create a demo store</Button></div>
+      <ErrorBox error={make.error} />
+    </div>
   );
 }

@@ -240,3 +240,25 @@ def post_pos_entered(line_id: uuid.UUID, session: Session = DbSession,
     rl = receiving.report_entered_in_pos(session, tenant_id=ctx.tenant_id, actor=ctx.actor, receipt_line_id=line_id)
     receipt = session.get(Receipt, rl.receipt_id)
     return _detail(session, receipt.po_id, ctx.tenant_id)
+
+
+@router.get("/receipt-lines/{line_id}/pos-evidence")
+def get_pos_evidence(line_id: uuid.UUID, session: Session = DbSession,
+                     ctx: TenantContext = Depends(require_permission("receiving.record"))) -> dict[str, Any]:
+    """POS readings before/after the receipt, with sales, refunds and other receipts in between."""
+    return receiving.pos_evidence(session, tenant_id=ctx.tenant_id, receipt_line_id=line_id)
+
+
+class ReconcileBody(BaseModel):
+    outcome: Literal["matches", "corrected_in_pos", "accepted_difference"]
+    note: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/receipt-lines/{line_id}/pos-reconcile")
+def post_pos_reconcile(line_id: uuid.UUID, body: ReconcileBody, session: Session = DbSession,
+                       ctx: TenantContext = Depends(require_permission("receiving.resolve"))) -> dict[str, Any]:
+    """Owner or manager signs off the receipt against the POS (the evidence is stored with the decision)."""
+    rl = receiving.reconcile_pos(session, tenant_id=ctx.tenant_id, actor=ctx.actor, receipt_line_id=line_id,
+                                 outcome=body.outcome, note=body.note)
+    receipt = session.get(Receipt, rl.receipt_id)
+    return _detail(session, receipt.po_id, ctx.tenant_id)

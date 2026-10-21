@@ -25,7 +25,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from clawbot.domain import sales, suppliers, tenancy
@@ -166,8 +166,11 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
     if readings:
         earliest = min(r.at for r in readings.values())
         for vid, sold_at, qty in session.execute(
+            # Sales take stock away. A refund puts it back only when the source says it was restocked —
+            # a refund alone (restock unknown, e.g. Square) is not assumed to be back on the shelf.
             select(SalesLine.variant_id, SalesLine.sold_at, SalesLine.quantity).where(
-                SalesLine.tenant_id == tenant_id, SalesLine.location_id == location_id, SalesLine.line_type == "sale",
+                SalesLine.tenant_id == tenant_id, SalesLine.location_id == location_id,
+                or_(SalesLine.line_type == "sale", and_(SalesLine.line_type == "refund", SalesLine.restock.is_(True))),
                 SalesLine.sold_at > earliest, SalesLine.sold_at <= cutoff)
         ):
             if vid in readings and sold_at > readings[vid].at:
@@ -186,18 +189,26 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
     # ---- open orders placed outside Tabula
     inbound: dict[uuid.UUID, list[InboundLine]] = defaultdict(list)
     supplier_names = {s.id: s.name for s in session.scalars(select(Supplier).where(Supplier.tenant_id == tenant_id))}
-    # An open-orders export can list Tabula's own sent orders too; those are counted from po_lines below, once.
-    tabula_numbers = {(sid, number.upper()) for sid, number in session.execute(
-        select(PurchaseOrder.supplier_id, PurchaseOrder.number).where(
-            PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.location_id == location_id,
-            PurchaseOrder.sent_at.is_not(None)))}  # incl. closed/failed: an old export must not revive them
+    # An open-orders export can list Tabula's own POs too: linked by supplier + order number only
+    # (open_orders.links). Linked → counted once, from Tabula's lines below. Suggested (number only
+    # nearly matches) → not counted until a person decides, and the item says so.
+    from clawbot.domain import open_orders
+
+    link_of = open_orders.links(session, tenant_id=tenant_id, location_id=location_id)
+    notes: dict[uuid.UUID, list[str]] = defaultdict(list)
     for line in session.scalars(
         select(ExternalOpenOrderLine).where(
             ExternalOpenOrderLine.tenant_id == tenant_id, ExternalOpenOrderLine.location_id == location_id,
             ExternalOpenOrderLine.outstanding_qty > 0)
         .order_by(ExternalOpenOrderLine.external_po_number, ExternalOpenOrderLine.supplier_id, ExternalOpenOrderLine.id)
     ):
-        if (line.supplier_id, (line.external_po_number or "").strip().upper()) in tabula_numbers:
+        link = link_of.get((line.supplier_id, line.external_po_number))
+        if link is not None and link.status in ("linked_exact", "linked_by_person"):
+            continue
+        if link is not None and link.status == "suggested":
+            notes[line.variant_id].append(
+                f"Open order {line.external_po_number} ({supplier_names.get(line.supplier_id, 'supplier')}) may be "
+                f"Tabula's {', '.join(link.candidates)}; it is not counted until you confirm whether it is the same order")
             continue
         arrival = (arrival_day_for_eta(eta=line.expected_at, now=cutoff, store_timezone=location.timezone)
                    if line.expected_at else None)
@@ -297,6 +308,7 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
             sales_through=sales_through_dt.isoformat() if sales_through_dt else None,
             sales_age_hours=_hours(cutoff, sales_through_dt) if sales_through_dt else None,
             inbound=tuple(sorted(inbound.get(v.id, ()), key=lambda i: (i.reference, i.quantity))),
+            notes=tuple(sorted(set(notes.get(v.id, ())))),
             offers=tuple(sorted(offer_inputs, key=lambda o: o.supplier_item_id)), offer_blockers=blockers,
             safety_stock=st.safety_stock if st else None, min_qty=st.min_qty if st else None,
             max_qty=st.max_qty if st else None, excluded=st.excluded if st else False,

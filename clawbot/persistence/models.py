@@ -175,6 +175,14 @@ class Location(Base):
     inventory_write_owner: Mapped[str] = mapped_column(
         String(20), nullable=False, default="tabula", server_default="tabula"
     )
+    # Where this location's sales come from: uploaded files, or the POS connector from `sales_feed_since`.
+    # One source at a time, so a sale is never counted from both (sales.check_feed).
+    sales_feed: Mapped[str] = mapped_column(String(20), nullable=False, default="files", server_default="files")
+    sales_feed_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Every switch, oldest first: [{"feed": "square", "since": iso}, …]. Before the first entry: files.
+    # The owner of a sale's moment is looked up here, so switching back never reopens a past period.
+    sales_feed_history: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list,
+                                                                      server_default=text("'[]'::jsonb"))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -746,6 +754,9 @@ class SalesLine(Base):
     key_scheme: Mapped[str] = mapped_column(String(20), nullable=False)
     sold_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     line_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Refunds only: did the item go back on the shelf? None = not known (Square's Orders API does not say).
+    # A refund lowers demand; it adds stock only when restock is True.
+    restock: Mapped[bool | None] = mapped_column(Boolean)
     quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)  # base units; refunds negative
     unit_price: Mapped[Decimal | None] = mapped_column(MONEY)
     currency: Mapped[str | None] = mapped_column(String(3))
@@ -812,6 +823,39 @@ class ExternalOpenOrderLine(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+OPEN_ORDER_LINK_DECISIONS = ("same_order", "different_order")
+
+
+class OpenOrderLink(Base):
+    """
+    A person's decision on whether an order number in an open-orders export is one of
+    Tabula's own POs. Orders are only ever linked by their number and supplier —
+    never because the products or quantities look alike. An exact number match links
+    automatically; a near match (e.g. "PO00080" vs "PO-00080") waits for this decision.
+    """
+
+    __tablename__ = "open_order_links"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "supplier_id", "location_id", "external_po_number"),
+        ForeignKeyConstraint(["tenant_id", "supplier_id"], ["suppliers.tenant_id", "suppliers.id"]),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"]),
+        CheckConstraint(_in("decision", OPEN_ORDER_LINK_DECISIONS), name="decision_valid"),
+        CheckConstraint("(decision = 'same_order') = (po_id IS NOT NULL)", name="po_iff_same"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    external_po_number: Mapped[str] = mapped_column(String(120), nullable=False)
+    decision: Mapped[str] = mapped_column(String(20), nullable=False)
+    po_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    note: Mapped[str | None] = mapped_column(String(300))
+    decided_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    decided_at: Mapped[datetime] = _created_at()
 
 
 # ---------------------------------------------------------------------------
@@ -1189,8 +1233,10 @@ class Receipt(Base):
 
 # ledger_posted: Tabula owns this location's stock and the sellable units were added to the ledger.
 # pending_pos: the POS owns stock and Tabula cannot write it; someone must enter it in the POS.
-# pos_reported: a person says it was entered; confirmed once a POS stock reading newer than that arrives.
-RECEIPT_POS_STATUSES = ("ledger_posted", "pending_pos", "pos_reported")
+# pos_reported: a person says it was entered in the POS.
+# pos_reconciled: an owner/manager compared the POS stock readings with the evidence (sales, refunds,
+#   other receipts in between) and signed off. Never set automatically (receiving.reconcile_pos).
+RECEIPT_POS_STATUSES = ("ledger_posted", "pending_pos", "pos_reported", "pos_reconciled")
 
 
 class ReceiptLine(Base):
@@ -1215,6 +1261,9 @@ class ReceiptLine(Base):
     pos_status: Mapped[str] = mapped_column(String(20), nullable=False)
     pos_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pos_reported_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    pos_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pos_reconciled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    pos_reconciliation: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # the evidence and decision signed off
     created_at: Mapped[datetime] = _created_at()
 
 

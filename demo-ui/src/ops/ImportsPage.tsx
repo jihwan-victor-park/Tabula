@@ -160,14 +160,25 @@ function ReviewPanel({ id, onDone }: { id: string; onDone: () => void }) {
                   ) : h.input === 'bool' ? (
                     <input type="checkbox" checked={!!value} onChange={(e) => set(e.target.checked)} />
                   ) : (
-                    <input className="rounded-[10px] border border-[#E8D4C6] px-3 py-2"
-                           type={h.input === 'datetime' ? 'datetime-local' : h.input === 'date' ? 'date' : 'text'}
-                           value={h.input === 'datetime' && value ? String(value).slice(0, 16) : (value as string) ?? ''}
-                           onChange={(e) => set(h.input === 'datetime' ? new Date(e.target.value).toISOString() : e.target.value)} />
+                    <span className="flex flex-wrap items-center gap-2">
+                      <input className="rounded-[10px] border border-[#E8D4C6] px-3 py-2"
+                             type={h.input === 'datetime' ? 'datetime-local' : h.input === 'date' ? 'date' : 'text'}
+                             value={h.input === 'datetime' && value ? localInput(String(value)) : (value as string) ?? ''}
+                             onChange={(e) => set(h.input === 'datetime' ? new Date(e.target.value).toISOString() : e.target.value)} />
+                      {h.input === 'datetime' && <button type="button" className="text-[12px] underline" onClick={() => set(new Date().toISOString())}>Now</button>}
+                    </span>
                   )}
                 </label>
               );
             })}
+            {p.suggested_settings?.period_start && declaredKeys.includes('period_start') && (
+              <div className="rounded-[10px] bg-[#EEF4FF] p-2 text-[12px] text-[#1E3A8A]">
+                The file has sales from <b>{p.suggested_settings.period_start}</b> to <b>{p.suggested_settings.period_end}</b>.{' '}
+                <button className="underline" onClick={() => setSettings((x) => ({ ...x, period_start: p.suggested_settings!.period_start, period_end: p.suggested_settings!.period_end }))}>
+                  Use these dates</button>
+                <div className="mt-1 text-[11px]">{p.suggested_settings.note}</div>
+              </div>
+            )}
             <Button variant="secondary" onClick={() => save.mutate()} loading={save.isPending}>Save and re-check</Button>
             <ErrorBox error={save.error} />
           </div>
@@ -203,4 +214,11 @@ function ReviewPanel({ id, onDone }: { id: string; onDone: () => void }) {
       <div className="mt-2"><ErrorBox error={confirm.error} /></div>
     </Panel>
   );
+}
+
+// An ISO time shown in the browser's own time zone for a datetime-local input.
+function localInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

@@ -286,7 +286,7 @@ def test_the_same_receipt_from_two_tabs_at_once_is_recorded_once(ready):
 # ---------------------------------------------------------------------------
 
 
-def test_receipt_at_a_pos_owned_location_flags_a_mismatch_and_blocks_new_orders_until_the_pos_shows_it(ready):
+def test_receipt_at_a_pos_owned_location_stays_flagged_until_someone_reconciles_it(ready):
     po = _send(ready, qty="10")
     with transaction() as s:
         s.execute(text("UPDATE locations SET inventory_write_owner = 'square' WHERE id = :id"), {"id": ready.location_id})
@@ -294,20 +294,21 @@ def test_receipt_at_a_pos_owned_location_flags_a_mismatch_and_blocks_new_orders_
     (rl,) = order["progress"]["receipts"][0]["lines"]
     assert rl["pos_status"] == "pending_pos" and _on_hand(ready) == 0  # nothing written to stock Tabula does not own
     assert order["progress"]["lines"][0]["pos_pending"]
-    tenant = uuid.UUID(ready.tenant_id)
-    with transaction() as s:
-        blocked = receiving.pos_unconfirmed(s, tenant_id=tenant, location_id=uuid.UUID(ready.location_id))
-    assert uuid.UUID(ready.variant["id"]) in blocked
+    tenant, location = uuid.UUID(ready.tenant_id), uuid.UUID(ready.location_id)
     reported = ready.post(f"/v1/receipt-lines/{rl['id']}/pos-entered", {}).json()
     assert reported["progress"]["receipts"][0]["lines"][0]["pos_status"] == "pos_reported"
-    with transaction() as s:  # still pending: no POS reading since the report
-        assert uuid.UUID(ready.variant["id"]) in receiving.pos_unconfirmed(s, tenant_id=tenant, location_id=uuid.UUID(ready.location_id))
+    with transaction() as s:  # a newer POS reading arrives — on its own it clears nothing
         inventory.record_snapshot(s, tenant_id=tenant, actor=system("square-sync"), variant_id=uuid.UUID(ready.variant["id"]),
-                                  location_id=uuid.UUID(ready.location_id), quantity=Decimal(66),
+                                  location_id=location, quantity=Decimal(66),
                                   as_of=datetime.now(timezone.utc) + timedelta(seconds=1), source_system="square",
                                   source_ref="inv-after")
     with transaction() as s:
-        assert receiving.pos_unconfirmed(s, tenant_id=tenant, location_id=uuid.UUID(ready.location_id)) == {}
+        assert uuid.UUID(ready.variant["id"]) in receiving.pos_unconfirmed(s, tenant_id=tenant, location_id=location)
+    signed = ready.post(f"/v1/receipt-lines/{rl['id']}/pos-reconcile",
+                        {"outcome": "matches", "note": "Square shows the 48 units received at 2pm"})
+    assert signed.status_code == 200
+    with transaction() as s:
+        assert receiving.pos_unconfirmed(s, tenant_id=tenant, location_id=location) == {}
 
 
 def test_a_pos_mismatch_is_a_blocker_on_new_drafts(ready):
