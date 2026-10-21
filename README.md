@@ -1,5 +1,21 @@
 # Tabula
 
+> **Rebuild in progress.** The product is being re-scoped to purchasing operations for small retailers (POS → replenishment plan → existing-supplier PO → receiving → invoice match). Work is tracked in [docs/CHECKPOINTS.md](docs/CHECKPOINTS.md). The sections below describe the original hackathon system, which stays as legacy/demo code.
+
+## Tabula API (new core)
+
+```bash
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+createdb tabula_dev && createdb tabula_test
+DATABASE_URL=postgresql+psycopg://localhost/tabula_dev .venv/bin/alembic upgrade head
+TABULA_AUTH_MODE=dev .venv/bin/uvicorn clawbot.api.app:app --reload   # docs at /docs
+.venv/bin/pytest                                                       # runs against tabula_test
+```
+
+Layout: `clawbot/api/app.py` (single app) · `clawbot/api/v1/` (routers) · `clawbot/domain/` (tenant-scoped services: inventory ledger, outbox, audit, connector events) · `clawbot/persistence/` (SQLAlchemy models + Alembic migrations).
+
+In dev auth mode send `X-Dev-User: you@example.com`; every tenant-scoped call also needs `X-Tenant-Id`, which the server checks against your membership. Stock changes require an `Idempotency-Key` header.
+
 Tabula is a multi-agent commerce intelligence platform for small business operators. It has two interconnected subsystems:
 
 1. **Agentic Marketplace** — a privacy-preserving coordination layer where independent stores share anonymized demand signals, debate market trends via AI agents, and receive personalized recommendations — without ever exposing their private inventory to competitors.

@@ -7,3 +7,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+
+# Real pilot customer files never go in git
+data/pilot/

@@ -10,10 +10,12 @@ Collections (database: $MONGODB_DB, default "clawbot"):
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
 from pymongo import ASCENDING, DESCENDING
+from pymongo.errors import DuplicateKeyError
 
 from clawbot.schemas.procurement import (
     CatalogEntry,
@@ -179,8 +181,8 @@ def insert_quote(quote: SupplierQuote) -> SupplierQuote:
     }
     try:
         get_col("supplier_quotes").insert_one(doc)
-    except Exception:
-        pass  # duplicate — already recorded
+    except DuplicateKeyError:
+        pass  # same quote id already recorded; any other DB failure propagates
     return quote
 
 
@@ -253,16 +255,39 @@ def upsert_catalog_entry(entry: CatalogEntry) -> CatalogEntry:
 
 def find_catalog_entry(product_name: str) -> CatalogEntry | None:
     """
-    Find the best matching catalog entry using case-insensitive regex on product_keyword.
+    Legacy keyword lookup (case-insensitive substring on product_keyword).
     Returns the first match or None.
+
+    Fuzzy by design and not safe for ordering on its own. As a guard it refuses
+    a match whose size or pack count disagrees with the product name (50ml vs
+    100ml, single vs 12-pack). New code resolves items with
+    clawbot.domain.matching.resolve_item and confirmed supplier_items; the
+    legacy procurement agent moves onto that path with the PO domain (CP6).
     """
-    docs = get_col("supplier_catalog").find(
-        {"product_keyword": {"$regex": product_name, "$options": "i"}}
-    ).limit(1)
-    for doc in docs:
-        return _doc_to_catalog_entry(doc)
-    # fallback: check if any keyword is a substring of product_name
-    for entry in list_catalog_entries():
-        if entry.product_keyword.lower() in product_name.lower():
-            return entry
+    candidates = list(
+        get_col("supplier_catalog").find(
+            {"product_keyword": {"$regex": re.escape(product_name), "$options": "i"}}
+        )
+    )
+    if not candidates:
+        # fallback: check if any keyword is a substring of product_name
+        candidates = [
+            {"product_keyword": e.product_keyword, "_entry": e}
+            for e in list_catalog_entries()
+            if e.product_keyword.lower() in product_name.lower()
+        ]
+    for doc in candidates:
+        if _size_or_pack_conflict(product_name, doc["product_keyword"]):
+            continue
+        return doc["_entry"] if "_entry" in doc else _doc_to_catalog_entry(doc)
     return None
+
+
+def _size_or_pack_conflict(a: str, b: str) -> bool:
+    from clawbot.domain.matching import _counts, _sizes
+
+    sizes_a, sizes_b = _sizes(a), _sizes(b)
+    if sizes_a and sizes_b and sizes_a != sizes_b:
+        return True
+    counts_a, counts_b = _counts(a), _counts(b)
+    return bool(counts_a or counts_b) and (counts_a or {1}) != (counts_b or {1})

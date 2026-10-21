@@ -17,3 +17,8 @@ mcp>=1.0.0
 python-jose[cryptography]>=3.3.0
 browserbase>=1.7.0
 playwright>=1.40.0
+# Operational DB (CP1)
+sqlalchemy>=2.0.30
+alembic>=1.13
+psycopg[binary]>=3.2
+pytest>=8
