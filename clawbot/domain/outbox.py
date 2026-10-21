@@ -105,20 +105,21 @@ def _expire_leases(session: Session, now: datetime) -> None:
 
 
 def claim_batch(
-    session: Session, *, limit: int = 10, lease: timedelta = timedelta(minutes=5)
+    session: Session,
+    *,
+    limit: int = 10,
+    lease: timedelta = timedelta(minutes=5),
+    topics: tuple[str, ...] | None = None,
 ) -> list[OutboxMessage]:
-    """Lease up to `limit` due messages. Commit promptly so other workers see the lease."""
+    """Lease up to `limit` due messages (optionally only `topics`). Commit promptly so other workers see the lease."""
     now = _now()
     _expire_leases(session, now)
     session.flush()
+    stmt = select(OutboxMessage).where(OutboxMessage.status == "pending", OutboxMessage.available_at <= now)
+    if topics is not None:
+        stmt = stmt.where(OutboxMessage.topic.in_(topics))
     rows = list(
-        session.scalars(
-            select(OutboxMessage)
-            .where(OutboxMessage.status == "pending", OutboxMessage.available_at <= now)
-            .order_by(OutboxMessage.available_at)
-            .limit(limit)
-            .with_for_update(skip_locked=True)
-        )
+        session.scalars(stmt.order_by(OutboxMessage.available_at).limit(limit).with_for_update(skip_locked=True))
     )
     for row in rows:
         row.status = "in_flight"

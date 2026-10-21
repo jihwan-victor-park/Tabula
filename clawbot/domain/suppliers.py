@@ -28,7 +28,13 @@ from sqlalchemy.orm import Session
 
 from clawbot.domain import audit, catalog, tenancy
 from clawbot.domain.errors import NotFound, StaleVersion, StateConflict, ValidationFailed
-from clawbot.domain.units import CurrencyMismatch, require_same_currency, unit_cost_per_base, validate_currency
+from clawbot.domain.units import (
+    CurrencyMismatch,
+    normalize_uom,
+    require_same_currency,
+    unit_cost_per_base,
+    validate_currency,
+)
 from clawbot.persistence.models import (
     ORDERING_CHANNELS,
     PAYMENT_TERMS,
@@ -57,7 +63,7 @@ _NON_NULL_SUPPLIER_FIELDS = {
     "timezone", "delivery_weekdays",
 }
 _PACK_FIELDS = {"order_uom", "units_per_order_uom"}
-_ITEM_EDITABLE = _PACK_FIELDS | {"description", "order_multiple", "min_order_qty", "lead_time_days", "status"}
+_ITEM_EDITABLE = _PACK_FIELDS | {"description", "order_multiple", "min_order_qty", "lead_time_days", "status", "source_ref"}
 _NON_NULL_ITEM_FIELDS = {"order_uom", "units_per_order_uom", "order_multiple", "min_order_qty", "status"}
 
 
@@ -578,7 +584,7 @@ def list_closures(session: Session, *, tenant_id: uuid.UUID, supplier_id: uuid.U
 def item_snapshot(i: SupplierItem) -> dict[str, Any]:
     fields = (
         "supplier_sku", "description", "variant_id", "mapping_status", "order_uom", "units_per_order_uom",
-        "order_multiple", "min_order_qty", "lead_time_days", "status", "version",
+        "order_multiple", "min_order_qty", "lead_time_days", "status", "source_ref", "version",
     )
     return {f: _jsonable(getattr(i, f)) for f in fields}
 
@@ -604,12 +610,13 @@ def create_supplier_item(
     min_order_qty: Decimal = Decimal(1),
     lead_time_days: int | None = None,
     suggested_variant_id: uuid.UUID | None = None,
+    source_ref: str | None = None,
 ) -> SupplierItem:
     """Create a supplier item. A variant given here is only a suggestion until a person confirms it."""
     authorize(actor, "supplier_item.edit")
     get_supplier(session, tenant_id=tenant_id, supplier_id=supplier_id)
     supplier_sku = supplier_sku.strip()
-    order_uom = order_uom.strip()
+    order_uom = normalize_uom(order_uom)
     if not supplier_sku or not order_uom:
         raise ValidationFailed("supplier_sku and order_uom must not be blank")
     _validate_pack(units_per_order_uom, order_multiple, min_order_qty)
@@ -638,6 +645,7 @@ def create_supplier_item(
         order_multiple=order_multiple,
         min_order_qty=min_order_qty,
         lead_time_days=lead_time_days,
+        source_ref=source_ref,
     )
     session.add(item)
     session.flush()
@@ -752,7 +760,7 @@ def update_supplier_item(
     if changes.get("lead_time_days") is not None and changes["lead_time_days"] < 0:
         raise ValidationFailed("lead_time_days must not be negative")
     if "order_uom" in changes:
-        changes["order_uom"] = changes["order_uom"].strip()
+        changes["order_uom"] = normalize_uom(changes["order_uom"])
         if not changes["order_uom"]:
             raise ValidationFailed("order_uom must not be blank")
     _validate_pack(
@@ -905,7 +913,7 @@ def record_price(
     _aware(valid_from, "valid_from")
     _aware(expires_at, "expires_at")
     item = get_supplier_item(session, tenant_id=tenant_id, item_id=item_id, for_update=True)
-    if (order_uom.strip(), Decimal(units_per_order_uom)) != (item.order_uom, item.units_per_order_uom):
+    if (normalize_uom(order_uom), Decimal(units_per_order_uom)) != (item.order_uom, item.units_per_order_uom):
         raise ValidationFailed(
             f"Price was quoted per {order_uom} of {units_per_order_uom}, but this item is ordered per "
             f"{item.order_uom} of {item.units_per_order_uom}; update the item's pack first",

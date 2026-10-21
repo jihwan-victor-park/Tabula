@@ -101,20 +101,49 @@ CP2에서 미룬 것 (담당 CP)
 - 서버 간 시계 차이로 동시 가격 기록이 back-date로 거부될 수 있음 → CP11(DB `now()` 사용 검토)
 - agent/worker 코드는 사람 actor를 `tenancy.actor_for()`로만 생성 (역할은 membership에서) → CP3부터 규칙
 
-## CP3 — CSV / Google Sheets 수입 `[IMP-01]`
+## [x] CP3 — CSV / Excel 수입 `[IMP-01]` (3c Google Sheets는 ⏳ 외부 대기)
 
-- [ ] 3.1 파일 유형 선택: 재고 / 판매 / 공급업체 가격표 / 미입고 주문 (명세 3.4 최소 필드)
-- [ ] 3.2 `imports` job: 파일 hash, import ID, 행 key 저장 → 동일 파일 재업로드 시 중복 반영 없음
-- [ ] 3.3 열 자동 매핑 초안 + 미리보기 확인 (Case/Qty/Cost 의미, 통화) → `confirm-mapping` 전에는 반영 안 함
-- [ ] 3.4 검증: 날짜, 통화, 음수, 단위 미확정, 통화 혼합 비교 금지
-- [ ] 3.5 Excel macro 미실행, CSV export formula injection 방지
-- [ ] 3.6 Sheets: 사용자가 파일·탭 선택, 15–60분 polling, 범위 batch read + checksum, quota 준수, 행 번호를 ID로 쓰지 않음
-- [ ] 3.7 기본 읽기 전용, writeback은 Tabula 전용 탭만
-- [ ] 3.8 `POST /v1/imports`, `POST /v1/imports/{id}/confirm-mapping` (202 + job ID)
+흐름: 업로드 → 열 매핑 초안 → 미리보기(행별 해석·오류) → 사람이 의미를 확정 → 적용 job(202) → 결과·오류 목록. 확정 전에는 아무것도 반영되지 않는다.
 
-Gate: 잘못된 단위의 가격표가 승인 전에 차단된다. 같은 판매 CSV를 두 번 올려도 수요가 한 번만 반영된다. CP0의 실제 파일 1세트가 오류 목록과 함께 수입된다.
+3a. 수입 틀
 
----
+- [x] 3a.1 `imports`, `import_rows`: 파일 SHA-256, 크기, 종류, 상태, context(공급업체·위치 등), mapping + revision. `(tenant, kind, sha256)` 고유 → 같은 파일 재업로드는 기존 import 반환
+- [x] 3a.2 파서: CSV(UTF-8/BOM, 구분자 감지), XLSX(openpyxl read-only, 캐시된 값만, macro 미실행), 크기·행 수 제한, 빈 행 무시
+- [x] 3a.3 값 해석: 숫자(통화 기호·천 단위·괄호 음수), 통화 기호 ↔ 선언 통화 불일치 오류, 날짜(ISO 기본, 그 외 형식은 사람이 명시), timezone 없는 시각은 위치 timezone
+- [x] 3a.4 열 매핑 초안(헤더 동의어) + 애매한 의미(Case/Qty/Cost가 상자인지 개수인지)는 **사람이 명시해야 확정 가능**
+- [x] 3a.5 미리보기: 행별 해석("상자 12개 × $30.00 = 개당 $2.50")과 오류·경고, 파일 내 중복 행 탐지
+- [x] 3a.6 확정 = mapping revision에 묶임(중간에 바뀌면 409), 행 오류가 있으면 명시적 동의 시에만 유효 행 적용
+- [x] 3a.7 적용은 outbox job(`import.apply`, retry_safe), 행 단위 멱등 → worker 재시작·재시도에도 중복 반영 없음
+- [x] 3a.8 오류 목록 CSV 내보내기(formula injection 방지 `=`, `+`, `-`, `@` 등)
+- [x] 3a.9 API: `POST /v1/imports`(multipart), `GET /v1/imports/{id}`, `GET …/preview`, `PUT …/mapping`, `POST …/confirm-mapping`(202), `GET …/errors.csv`
+
+3b. 종류별 적용
+
+- [x] 3b.1 공급업체 가격표 → supplier_items(출처 기록) + 가격 이력. 단가 기준(상자당/개당)과 포장 수량은 사람이 확정, merchant SKU/바코드가 있으면 variant **제안만**. 같은 가격 재적용은 무변화
+- [x] 3b.2 재고 → `inventory_snapshots`(기준 시각·출처). Tabula 소유 위치는 차이만큼 `count` 이동, POS 소유 위치는 snapshot만. 선택 시 미등록 SKU를 variant로 생성(권한 필요)
+- [x] 3b.3 판매 → `sales_lines`(출처 채널·거래 ID·line key 고유, 판매/환불 구분) → 같은 판매를 두 번 올려도 수요 1회
+- [x] 3b.4 미입고 주문 → `external_open_order_lines`(공급업체·PO 번호·SKU·잔량·확인 여부·ETA) → CP5 중복 발주 방지 입력
+- [x] 3b.5 SKU 해석은 `resolve_item`, 실패 행은 후보와 함께 오류. 텍스트 후보는 pg_trgm 인덱스로(CP2 이월)
+
+3c. Google Sheets ⏳ 외부: Google OAuth 앱·검증
+
+- [ ] 3c.1 파일·탭 선택, 15–60분 polling, 범위 batch read + checksum, quota 준수
+- [ ] 3c.2 행 번호를 ID로 쓰지 않음(행 key = SKU+위치+source), 열 이동 감지 시 매핑 재확인
+- [ ] 3c.3 기본 읽기 전용, writeback은 Tabula 전용 탭만
+
+Gate: 잘못된 단위의 가격표가 승인 전에 차단된다. 같은 판매 CSV를 두 번 올려도 수요가 한 번만 반영된다. CP0의 실제 파일 1세트가 오류 목록과 함께 수입된다(실제 파일은 CP0 이후 — 그 전에는 현실적인 합성 파일로 검증하고 그렇게 표시).
+— 3a/3b 통과 2026-10-20: 테스트 195개(합성 파일), 독립 리뷰 2회(1차 버그 14·명세 누락 4, 2차 미해결 3·신규 8) 반영. **실제 파일 검증은 CP0 이후 남음**
+
+CP3 리뷰 반영 요약: XLSX 압축 해제 크기·셀 길이 제한, 매직 바이트 검사, 계산 안 된 수식 = 오류, void/취소는 판매 아님, DB 오류는 행 단위로 격리, 죽은 job → import `failed`, 같은 파일이라도 다른 위치·거절 후 재업로드는 새 import, **확정 시 행별 해석 digest 고정 → 적용 시 달라진 행은 반영 안 함**, 의미 설정(단가 기준·포장·통화·가격 유형·날짜 형식·timezone 등)은 확정하는 사람이 다시 진술(값의 의미로 비교), **오류 행 허용에 동의하지 않았으면 적용 중 한 행이라도 실패 시 전체 미적용**, XLSX 선언 크기 무시(행 누락 방지), 단위 별칭 정규화(CS=case), `$`/`¥` 다통화, 판매 line key는 파일의 원래 식별자 + 순번(바코드 재연결·부분 환불 반복에도 1회), 실사 순서는 실제 발생 시각 기준, 미래 날짜 거부, 판매 출처는 고정 목록 + 주문 단위 key 방식 하나만(다른 경로로 들어온 같은 주문은 검토 대상)
+
+CP3에서 미룬 것 (담당 CP)
+
+- 원본 파일 보관(documents 테이블) → CP9
+- receiver용 실사 전용 권한(지금은 owner/manager/bookkeeper만 업로드·확정) → CP8/CP10
+- 권장 필드(판매 가능·손상 수량, 할인·채널·재고 복원, 이미 받은 수량) → CP4/CP5
+- 긴 job의 lease heartbeat, 미리보기 결과 캐시, 파서를 API 프로세스 밖으로 → CP11
+- "1,500"은 미국 기본값대로 천 단위로 읽음(다른 locale 지원 시 재검토) → CP14
+
 
 ## CP4 — 첫 POS 커넥터 (기본 가설 Square) `[CON-01] [CON-02]` ⏳ 외부: 개발자 계정·앱 심사
 
@@ -125,7 +154,8 @@ Gate: 잘못된 단위의 가격표가 승인 전에 차단된다. 같은 판매
 - [ ] 4.5 webhook: 서명 검증 → raw event 저장(CP1.10) → queue → 최신 상태 재조회 후 정규화 (순서 신뢰 안 함)
 - [ ] 4.6 변경분 polling + 야간 전체 대조
 - [ ] 4.7 POS가 반영한 재고에서 판매를 다시 차감하지 않음. POS 소유 위치는 `inventory_snapshots` 경로로만 갱신(Tabula 이동 원장은 거부됨, CP1.9b)
-- [ ] 4.8 sales_orders/sales_lines: origin 채널·origin order ID로 중복 판매 제거
+- [ ] 4.8a 주문 key 방식 인계: CSV로 기록된 주문에 커넥터가 이후 줄(환불 등)을 붙일 때의 규칙(지금은 영구히 검토 대상이 됨, CP3 리뷰 2e)
+- [ ] 4.8 sales_lines: 커넥터는 `key_scheme=provider_line`. 같은 주문이 CSV로 이미 기록돼 있으면 `other_path`로 검토 대상(이미 구현된 주문 단위 검사, CP3). 어느 경로가 주문을 소유할지(예: 연결 시점 이전 = CSV, 이후 = 커넥터) 정책 확정
 
 Gate: 실제 계정 표본의 거래·재고·환불이 원본과 일치. webhook을 일부러 누락시켜도 polling으로 복원. 같은 webhook 10회 수신, 환불이 판매보다 먼저 도착하는 경우 통과.
 
@@ -144,6 +174,8 @@ Gate: 실제 계정 표본의 거래·재고·환불이 원본과 일치. webhoo
 - [ ] 5.9 기존 agent의 `while True` 루프에 최대 step·timeout·비용 상한
 - [ ] 5.10 `POST /v1/replenishment-runs`, `GET /v1/recommendations` (stale 표시)
 - [ ] 5.11 통화가 섞인 offer는 실행 전체를 중단하지 말고 해당 SKU를 예외 task로 (`cheapest_eligible`는 현재 예외를 던짐)
+- [ ] 5.12 미입고 주문 snapshot 의미: 파일별 `as_of`, 더 오래된 export가 새것을 덮지 않음, 새 export에서 빠진 줄(이미 입고)은 닫거나 표시 (CP3 리뷰 C2)
+- [ ] 5.13 실사 사이의 재고: 마지막 실사 − 이후 판매 + 입고, snapshot 출처 간 우선순위(POS > 수동 수입) 명시 (CP3 리뷰 C3)
 
 Gate: 명세 7.3 예시(18개, 일 6개, lead 4일, 주기 7일, safety 12, 12입 → 5상자, 1일 품절 구간) 및 boundary case 테스트 통과. scheduler와 수동 실행이 동시에 돌아도 계획 1개.
 
@@ -160,6 +192,7 @@ Gate: 명세 7.3 예시(18개, 일 6개, lead 4일, 주기 7일, safety 12, 12�
 - [ ] 6.8 PO line은 승인 시점의 supplier_item version, order_uom, units_per_order_uom, price ID, 통화를 스냅샷 → 이후 포장·가격 변경이 승인을 무효화 (CP2 리뷰 C4)
 - [ ] 6.9 일반 Idempotency-Key 저장소: POST purchase-orders/approve/send 등 재시도·더블클릭 중복 방지 (CP2 리뷰 C5)
 - [ ] 6.10 legacy procurement agent를 PO 도메인 + 확정 supplier_items로 전환 (CP2.8b)
+- [ ] 6.11 승인은 화면에 보인 내용의 digest에 묶음(수량·단가·포장·수취인·배송지) — CP3 import 확정과 같은 방식 (CP3 리뷰 C5)
 - [ ] 6.7 API: `POST /v1/purchase-orders`, `/approve`, `/send`, `/cancel-request`
 
 Gate: 서버 재시작 뒤 승인 상태 유지. 두 사람이 동시에 승인해도 outbox 전송 작업 1건. 승인 뒤 단가가 바뀌면 재승인 필요.

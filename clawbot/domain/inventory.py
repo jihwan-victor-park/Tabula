@@ -23,13 +23,13 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import distinct_on, insert
 from sqlalchemy.orm import Session
 
 from clawbot.domain import audit, catalog, tenancy
 from clawbot.domain.errors import IdempotencyConflict, StateConflict, ValidationFailed
 from clawbot.domain.units import QTY_SCALE
-from clawbot.persistence.models import MOVEMENT_REASONS, InventoryMovement, InventoryPosition
+from clawbot.persistence.models import MOVEMENT_REASONS, InventoryMovement, InventoryPosition, InventorySnapshot
 from clawbot.policies.permissions import Actor, authorize
 
 MANUAL_SOURCE = "manual"
@@ -206,4 +206,59 @@ def list_movements(
     if variant_id is not None:
         stmt = stmt.where(InventoryMovement.variant_id == variant_id)
     stmt = stmt.order_by(InventoryMovement.recorded_at.desc()).limit(limit)
+    return list(session.scalars(stmt))
+
+
+def record_snapshot(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    actor: Actor,
+    variant_id: uuid.UUID,
+    location_id: uuid.UUID,
+    quantity: Decimal,
+    as_of: datetime,
+    source_system: str,
+    source_ref: str,
+) -> tuple[InventorySnapshot, bool]:
+    """Record a reported stock level. Idempotent per (source, ref, location, variant). Returns (row, is_new)."""
+    authorize(actor, "inventory.snapshot")
+    if as_of.tzinfo is None:
+        raise ValidationFailed("as_of must include a timezone")
+    if Decimal(quantity) != Decimal(quantity).quantize(QTY_SCALE):
+        raise ValidationFailed("quantity supports at most 4 decimal places")
+    catalog.get_variant(session, tenant_id=tenant_id, variant_id=variant_id)
+    tenancy.get_location(session, tenant_id=tenant_id, location_id=location_id)
+    inserted = session.execute(
+        insert(InventorySnapshot)
+        .values(
+            id=uuid.uuid4(), tenant_id=tenant_id, variant_id=variant_id, location_id=location_id,
+            quantity=quantity, as_of=as_of, source_system=source_system, source_ref=source_ref,
+        )
+        .on_conflict_do_nothing(index_elements=["tenant_id", "source_system", "source_ref", "location_id", "variant_id"])
+        .returning(InventorySnapshot.id)
+    ).scalar_one_or_none()
+    snapshot = session.scalars(
+        select(InventorySnapshot).where(
+            InventorySnapshot.tenant_id == tenant_id,
+            InventorySnapshot.source_system == source_system,
+            InventorySnapshot.source_ref == source_ref,
+            InventorySnapshot.location_id == location_id,
+            InventorySnapshot.variant_id == variant_id,
+        )
+    ).one()
+    return snapshot, inserted is not None
+
+
+def latest_snapshots(
+    session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID | None = None
+) -> list[InventorySnapshot]:
+    stmt = (
+        select(InventorySnapshot)
+        .where(InventorySnapshot.tenant_id == tenant_id)
+        .ext(distinct_on(InventorySnapshot.location_id, InventorySnapshot.variant_id))
+        .order_by(InventorySnapshot.location_id, InventorySnapshot.variant_id, InventorySnapshot.as_of.desc())
+    )
+    if location_id is not None:
+        stmt = stmt.where(InventorySnapshot.location_id == location_id)
     return list(session.scalars(stmt))

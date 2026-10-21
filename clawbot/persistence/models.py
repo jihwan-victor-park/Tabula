@@ -53,6 +53,18 @@ PAYMENT_TERMS = ("unknown", "prepaid", "cod", "net", "card_on_file")
 SUPPLIER_ITEM_MAPPING_STATUSES = ("unmapped", "suggested", "confirmed", "rejected")
 SUPPLIER_ITEM_STATUSES = ("active", "discontinued", "unavailable")
 PRICE_TYPES = ("contract", "price_list", "invoice", "quote", "public_listing")
+IMPORT_KINDS = ("supplier_price_list", "inventory", "sales", "open_orders")
+# uploaded → (mapping edited) → confirmed → applying → applied | failed; rejected = discarded by a person
+IMPORT_STATUSES = ("uploaded", "confirmed", "applying", "applied", "failed", "rejected")
+IMPORT_ROW_STATUSES = ("pending", "applied", "unchanged", "error", "skipped")
+SALES_LINE_TYPES = ("sale", "refund")
+# Origin systems a sales line can come from. Fixed so that "square" and
+# "square-export" can never be two names for one origin (spec 6.3).
+SALES_SOURCES = ("square", "shopify", "clover", "lightspeed", "toast", "woocommerce", "amazon", "faire",
+                 "other_pos", "manual")
+# How a line's external_line_key was built. One origin order must only ever be
+# recorded under one scheme, or the same sale could be counted twice.
+SALES_KEY_SCHEMES = ("csv_line_id", "csv_item_ordinal", "provider_line")
 MOVEMENT_REASONS = (
     "receipt",
     "adjustment",
@@ -189,6 +201,8 @@ class Variant(Base):
         UniqueConstraint("tenant_id", "sku"),
         ForeignKeyConstraint(["tenant_id", "product_id"], ["products.tenant_id", "products.id"]),
         Index("uq_variants_tenant_gtin", "tenant_id", "gtin", unique=True, postgresql_where=text("gtin IS NOT NULL")),
+        # Trigram index for fuzzy candidate search (pg_trgm, created in migration 0004).
+        Index("ix_variants_name_trgm", func.lower(text("name")), postgresql_using="gin", postgresql_ops={"lower_1": "gin_trgm_ops"}),
         CheckConstraint(_in("status", VARIANT_STATUSES), name="status_valid"),
         CheckConstraint("size_value IS NULL OR size_value > 0", name="size_positive"),
         CheckConstraint("(size_value IS NULL) = (size_unit IS NULL)", name="size_pair"),
@@ -409,6 +423,8 @@ class SupplierItem(Base):
     min_order_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False, default=Decimal(1))
     lead_time_days: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    # Where the pack and terms came from (e.g. "import:<id>", "invoice INV-1042").
+    source_ref: Mapped[str | None] = mapped_column(String(500))
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
@@ -591,3 +607,169 @@ class AuditEvent(Base):
     after: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
+
+
+# ---------------------------------------------------------------------------
+# Imports (CP3)
+# ---------------------------------------------------------------------------
+
+
+class Import(Base):
+    """
+    One uploaded file. Nothing is applied until a person confirms the column
+    mapping at a given revision; applying is an idempotent job.
+    """
+
+    __tablename__ = "imports"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        # The same file for the same context is one import while it is live; a
+        # rejected or failed import does not block uploading the file again.
+        Index(
+            "uq_imports_live_file", "tenant_id", "kind", "file_sha256", "context_key", unique=True,
+            postgresql_where=text("status NOT IN ('rejected', 'failed')"),
+        ),
+        CheckConstraint(_in("kind", IMPORT_KINDS), name="kind_valid"),
+        CheckConstraint(_in("status", IMPORT_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="uploaded")
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    file_format: Mapped[str] = mapped_column(String(10), nullable=False)  # csv | xlsx
+    header: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Kind-specific context chosen at upload: supplier_id, location_id, source_system …
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    context_key: Mapped[str] = mapped_column(String(64), nullable=False)  # sha256 of the canonical context
+    # {"columns": {field: header}, "settings": {...}}; drafts are machine-made, confirmation is a person's
+    mapping: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    mapping_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    accept_row_errors: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    failure: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    confirmed_role: Mapped[str | None] = mapped_column(String(20))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ImportRow(Base):
+    __tablename__ = "import_rows"
+    __table_args__ = (
+        UniqueConstraint("import_id", "row_number"),
+        ForeignKeyConstraint(["tenant_id", "import_id"], ["imports.tenant_id", "imports.id"], ondelete="CASCADE"),
+        CheckConstraint(_in("status", IMPORT_ROW_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    import_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-based, as shown in a spreadsheet
+    cells: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    errors: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    # Digest of the row's interpretation when a person confirmed it; apply refuses rows that no longer match.
+    confirmed_digest: Mapped[str | None] = mapped_column(String(64))
+    result_ref: Mapped[str | None] = mapped_column(String(255))
+
+
+class InventorySnapshot(Base):
+    """A stock count reported by a source (POS, import, count) at a point in time."""
+
+    __tablename__ = "inventory_snapshots"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_system", "source_ref", "location_id", "variant_id"),
+        ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_system: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class SalesLine(Base):
+    """
+    One sold (or refunded) item line from its origin system. Uniqueness on the
+    origin identifiers means the same sale imported twice counts once.
+    """
+
+    __tablename__ = "sales_lines"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "source_system", "external_order_id", "external_line_key"),
+        ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        CheckConstraint(_in("line_type", SALES_LINE_TYPES), name="line_type_valid"),
+        CheckConstraint(_in("source_system", SALES_SOURCES), name="source_valid"),
+        CheckConstraint(_in("key_scheme", SALES_KEY_SCHEMES), name="key_scheme_valid"),
+        Index("ix_sales_lines_order", "tenant_id", "source_system", "external_order_id"),
+        CheckConstraint(
+            "(line_type = 'sale' AND quantity > 0) OR (line_type = 'refund' AND quantity < 0)", name="sign_matches_type"
+        ),
+        Index("ix_sales_lines_variant_sold_at", "tenant_id", "variant_id", "sold_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_system: Mapped[str] = mapped_column(String(40), nullable=False)  # origin channel: square, csv:shopify-export …
+    external_order_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_line_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_scheme: Mapped[str] = mapped_column(String(20), nullable=False)
+    sold_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    line_type: Mapped[str] = mapped_column(String(10), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(QTY, nullable=False)  # base units; refunds negative
+    unit_price: Mapped[Decimal | None] = mapped_column(MONEY)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ExternalOpenOrderLine(Base):
+    """
+    An order already placed outside Tabula and not yet fully received. Used to
+    avoid ordering the same thing twice; only `supplier_confirmed` lines count as
+    confirmed inbound (spec 6.4).
+    """
+
+    __tablename__ = "external_open_order_lines"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "supplier_id", "external_po_number", "variant_id"),
+        ForeignKeyConstraint(["tenant_id", "supplier_id"], ["suppliers.tenant_id", "suppliers.id"]),
+        ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        CheckConstraint("outstanding_qty >= 0", name="outstanding_nonneg"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    external_po_number: Mapped[str] = mapped_column(String(120), nullable=False)
+    outstanding_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)  # base units
+    ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    supplier_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

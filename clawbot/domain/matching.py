@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from difflib import SequenceMatcher
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from clawbot.domain.catalog import SIZE_UNITS
@@ -31,6 +31,8 @@ from clawbot.persistence.models import ExternalItemMapping, SupplierItem, Varian
 
 CANDIDATE_LIMIT = 5
 CANDIDATE_MIN_SCORE = 0.55
+TRGM_SHORTLIST = 25
+TRGM_MIN_SIMILARITY = 0.2
 
 # "1,000ml" is a thousands separator; "1,5 l" is a decimal comma.
 _SIZE_RE = re.compile(
@@ -105,7 +107,15 @@ def text_candidates(session: Session, *, tenant_id: uuid.UUID, name: str) -> lis
         return []
     their_sizes, their_counts = _sizes(name), _counts(name) or {1}
     scored: list[Candidate] = []
-    for v in session.scalars(select(Variant).where(Variant.tenant_id == tenant_id, Variant.status == "active")):
+    # pg_trgm narrows the field with an index; SequenceMatcher then scores the shortlist.
+    similarity = func.similarity(func.lower(Variant.name), target)
+    shortlist = session.scalars(
+        select(Variant)
+        .where(Variant.tenant_id == tenant_id, Variant.status == "active", similarity > TRGM_MIN_SIMILARITY)
+        .order_by(similarity.desc())
+        .limit(TRGM_SHORTLIST)
+    )
+    for v in shortlist:
         score = SequenceMatcher(None, target, _normalize_name(v.name)).ratio()
         if score < CANDIDATE_MIN_SCORE:
             continue
@@ -195,3 +205,70 @@ def resolve_item(
     elif name:
         result.candidates = text_candidates(session, tenant_id=tenant_id, name=name)
     return result
+
+
+class BulkResolver:
+    """
+    resolve_item() for many rows: the tenant's identifiers are loaded once, then
+    each row resolves in memory with the same priority and conflict rules
+    (merchant SKU → GTIN / unique raw barcode → confirmed supplier SKU).
+    Provider-ID mappings are not used here; imports carry no provider IDs.
+    """
+
+    def __init__(self, session: Session, *, tenant_id: uuid.UUID):
+        self.by_sku: dict[str, uuid.UUID] = {}
+        self.by_gtin: dict[str, uuid.UUID] = {}
+        self.by_barcode: dict[str, list[uuid.UUID]] = {}
+        for vid, sku, gtin, barcode in session.execute(
+            select(Variant.id, Variant.sku, Variant.gtin, Variant.barcode).where(Variant.tenant_id == tenant_id)
+        ):
+            self.by_sku[sku] = vid
+            if gtin:
+                self.by_gtin[gtin] = vid
+            if barcode:
+                self.by_barcode.setdefault(barcode, []).append(vid)
+        self.by_supplier_sku: dict[tuple[uuid.UUID, str], uuid.UUID] = {
+            (sid, ssku): vid
+            for sid, ssku, vid in session.execute(
+                select(SupplierItem.supplier_id, SupplierItem.supplier_sku, SupplierItem.variant_id).where(
+                    SupplierItem.tenant_id == tenant_id, SupplierItem.mapping_status == "confirmed"
+                )
+            )
+        }
+
+    def add_variant(self, variant: Variant) -> None:
+        self.by_sku[variant.sku] = variant.id
+        if variant.gtin:
+            self.by_gtin[variant.gtin] = variant.id
+
+    def resolve(
+        self,
+        *,
+        sku: str | None = None,
+        barcode: str | None = None,
+        supplier_id: uuid.UUID | None = None,
+        supplier_sku: str | None = None,
+    ) -> MatchResult:
+        hits: list[tuple[str, uuid.UUID]] = []
+        result = MatchResult()
+        if sku and sku.strip() and sku.strip() in self.by_sku:
+            hits.append(("merchant_sku", self.by_sku[sku.strip()]))
+        if barcode and barcode.strip():
+            gtin = normalize_gtin(barcode)
+            if gtin:
+                if gtin in self.by_gtin:
+                    hits.append(("gtin", self.by_gtin[gtin]))
+            else:
+                ids = self.by_barcode.get(barcode.strip(), [])
+                if len(ids) == 1:
+                    hits.append(("barcode", ids[0]))
+                elif len(ids) > 1:
+                    result.ambiguous = True
+        if supplier_id and supplier_sku and (supplier_id, supplier_sku.strip()) in self.by_supplier_sku:
+            hits.append(("supplier_sku", self.by_supplier_sku[(supplier_id, supplier_sku.strip())]))
+        if hits:
+            result.method, result.variant_id = hits[0]
+            result.conflicts = [
+                {"method": method, "variant_id": str(vid)} for method, vid in hits[1:] if vid != result.variant_id
+            ]
+        return result

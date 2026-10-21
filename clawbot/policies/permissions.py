@@ -64,6 +64,14 @@ _PERMISSIONS: dict[str, tuple[frozenset[str], bool, bool]] = {
     "price.record": (frozenset({"owner", "manager", "bookkeeper"}), False, False),
     "inventory.move": (frozenset({"owner", "manager", "receiver"}), False, True),
     "audit.read": (frozenset({"owner", "manager", "bookkeeper"}), False, False),
+    "inventory.snapshot": (frozenset({"owner", "manager", "receiver"}), False, True),
+    "sales.record": (frozenset({"owner", "manager"}), False, True),
+    "orders.record_external": (frozenset({"owner", "manager"}), False, True),
+    # Imports: anyone handling the books may upload; agents may draft a column
+    # mapping (spec 8, "schema 제안") but only a person confirms it.
+    "import.upload": (frozenset({"owner", "manager", "bookkeeper"}), False, False),
+    "import.draft_mapping": (frozenset({"owner", "manager", "bookkeeper"}), True, False),
+    "import.confirm": (frozenset({"owner", "manager", "bookkeeper"}), False, False),
 }
 
 

@@ -30,7 +30,8 @@ def database_url() -> str:
 def get_engine() -> Engine:
     global _engine, _SessionLocal
     if _engine is None:
-        _engine = create_engine(database_url(), pool_pre_ping=True)
+        # UTC sessions: timestamps come back the same whatever the server's local timezone.
+        _engine = create_engine(database_url(), pool_pre_ping=True, connect_args={"options": "-c timezone=UTC"})
         _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
 

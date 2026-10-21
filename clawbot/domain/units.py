@@ -28,6 +28,25 @@ CURRENCY_MINOR_UNITS: dict[str, int] = {
 QTY_SCALE = Decimal("0.0001")
 
 
+# Common order-unit spellings on price lists and invoices. Unknown labels are kept
+# (lower-cased), never guessed.
+_UOM_ALIASES = {
+    "case": "case", "cases": "case", "cs": "case", "cse": "case", "ca": "case",
+    "each": "each", "ea": "each", "eaches": "each", "unit": "each", "units": "each", "pc": "each", "pcs": "each",
+    "pack": "pack", "pk": "pack", "pkg": "pack", "packs": "pack",
+    "box": "box", "bx": "box", "boxes": "box",
+    "bag": "bag", "bg": "bag", "bags": "bag",
+    "carton": "carton", "ctn": "carton", "ct": "carton",
+    "pallet": "pallet", "plt": "pallet",
+    "dozen": "dozen", "dz": "dozen", "doz": "dozen",
+}
+
+
+def normalize_uom(label: str) -> str:
+    key = label.strip().lower().rstrip(".")
+    return _UOM_ALIASES.get(key, key)
+
+
 class CurrencyMismatch(ValidationFailed):
     """Amounts in different currencies were combined or compared."""
 
