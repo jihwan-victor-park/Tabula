@@ -270,6 +270,40 @@ def create_run(
     return run, True
 
 
+@dataclasses.dataclass(frozen=True)
+class Evaluation:
+    """A plan computed for a check (one PO's refresh, approval or send) and never saved."""
+
+    data_version: int
+    cutoff: datetime
+    lines: dict[uuid.UUID, ReplenishmentLine]  # transient rows, by variant
+
+
+def evaluate(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID) -> Evaluation:
+    """
+    Same calculation as create_run, but it does not become (or replace) the location's
+    current plan: the store-wide plan a person looks at and a check made for one order
+    stay separate.
+    """
+    from clawbot.domain import data_version
+
+    tenancy.get_location(session, tenant_id=tenant_id, location_id=location_id)
+    cutoff = _now()
+    version_seen = data_version.current(session, tenant_id)
+    policy = current_policy(session, tenant_id=tenant_id)
+    gathered = gather(session, tenant_id=tenant_id, location_id=location_id, cutoff=cutoff, policy=policy)
+    lines = {}
+    for item in gathered.items:
+        r = recommend(item, policy)
+        lines[uuid.UUID(r.variant_id)] = ReplenishmentLine(
+            tenant_id=tenant_id, variant_id=uuid.UUID(r.variant_id), status=r.status, needs_review=r.needs_review,
+            order_qty=r.order_qty, order_uom=r.order_uom, base_qty=r.base_qty, line_cost=r.line_cost,
+            currency=r.currency, supplier_id=uuid.UUID(r.supplier_id) if r.supplier_id else None,
+            supplier_item_id=uuid.UUID(r.supplier_item_id) if r.supplier_item_id else None,
+            inputs=codec.dumps(item), result=_result_json(r))
+    return Evaluation(data_version=version_seen, cutoff=cutoff, lines=lines)
+
+
 def get_run(session: Session, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> ReplenishmentRun:
     run = session.scalars(
         select(ReplenishmentRun).where(ReplenishmentRun.tenant_id == tenant_id, ReplenishmentRun.id == run_id)

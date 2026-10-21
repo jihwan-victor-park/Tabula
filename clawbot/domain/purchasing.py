@@ -40,7 +40,6 @@ from clawbot.persistence.models import (
     PoRevision,
     PurchaseOrder,
     ReplenishmentLine,
-    ReplenishmentRun,
     SupplierContact,
     TenantCounter,
     Variant,
@@ -98,6 +97,11 @@ def build_content(session: Session, po: PurchaseOrder, lines: list[dict[str, Any
     recipient = _order_recipient(session, supplier)
     notices: list[dict[str, str]] = []
     blockers: list[str] = []
+    # Received in Tabula but the POS (which owns the stock) does not show it yet: the plan's stock is
+    # understated, so ordering more of it waits until the POS catches up (receiving.py).
+    from clawbot.domain import receiving
+
+    pos_pending = receiving.pos_unconfirmed(session, tenant_id=tenant_id, location_id=po.location_id)
 
     out_lines = []
     subtotal = Decimal(0)
@@ -115,6 +119,8 @@ def build_content(session: Session, po: PurchaseOrder, lines: list[dict[str, Any
             line_blockers.append("no_current_price")
         elif price.currency != po.currency:
             line_blockers.append("price_currency_differs")
+        if item.variant_id in pos_pending:
+            line_blockers.append("stock_not_confirmed_in_pos")
         if order_qty <= 0:
             line_blockers.append("quantity_not_positive")
         elif order_qty % item.order_multiple != 0 or order_qty < item.min_order_qty:
@@ -264,7 +270,7 @@ def _recommendation(line: ReplenishmentLine, supplier_item_id: str | None = None
     chosen = next((o for o in line.inputs["offers"] if o["supplier_item_id"] == sid), None)
     ordering_here = line.status == "order" and str(line.supplier_item_id) == sid
     return {
-        "run_line_id": str(line.id), "status": line.status if ordering_here or line.status != "order" else "other_supplier",
+        "run_line_id": str(line.id) if line.id else None, "status": line.status if ordering_here or line.status != "order" else "other_supplier",
         "order_qty": f"{line.order_qty.normalize():f}" if ordering_here else "0",
         "base_qty": f"{line.base_qty.normalize():f}" if ordering_here else "0", "on_hand": line.inputs["on_hand"],
         "stock_as_of": line.inputs["stock_as_of"], "stock_source": line.inputs["stock_source"],
@@ -279,12 +285,9 @@ def _recommendation(line: ReplenishmentLine, supplier_item_id: str | None = None
     }
 
 
-def _plan_now(session: Session, po: PurchaseOrder, purpose: str) -> tuple[ReplenishmentRun, dict[uuid.UUID, ReplenishmentLine]]:
-    """Recompute (or reuse, if inputs are unchanged) the location's plan; lines by variant."""
-    from clawbot.policies.permissions import system
-
-    run, _ = replenishment.create_run(session, tenant_id=po.tenant_id, actor=system(purpose), location_id=po.location_id)
-    return run, {l.variant_id: l for l in replenishment.run_lines(session, run)}
+def _plan_now(session: Session, po: PurchaseOrder) -> replenishment.Evaluation:
+    """This order's check of the plan: computed now, never saved as the location's plan."""
+    return replenishment.evaluate(session, tenant_id=po.tenant_id, location_id=po.location_id)
 
 
 def _moved(content: dict[str, Any], by_variant: dict[uuid.UUID, ReplenishmentLine]) -> list[dict[str, Any]]:
@@ -413,14 +416,15 @@ def refresh(session: Session, *, tenant_id: uuid.UUID, actor: Actor, po_id: uuid
     pending = data_version.pending_inputs(session, tenant_id)
     if pending:
         raise StateConflict("Data is still being updated; refresh when it finishes", details={"pending": pending})
-    run, by_variant = _plan_now(session, po, "po-refresh")
+    ev = _plan_now(session, po)
+    by_variant = ev.lines
     lines = []
     for l in revision(session, po).content["lines"]:
         new = by_variant.get(uuid.UUID(l["variant_id"])) if l["variant_id"] else None
         lines.append({"supplier_item_id": l["supplier_item_id"], "sku": l["sku"], "order_qty": l["order_qty"],
                       "recommendation": _recommendation(new, l["supplier_item_id"]) if new is not None
                       else {**l["recommendation"], "order_qty": "0", "status": "missing", "reasons": []}})
-    po.data_version = run.data_version
+    po.data_version = ev.data_version
     return _new_revision(session, po, actor, lines, "Refreshed with current prices, details and recommendation")
 
 
@@ -486,13 +490,13 @@ def _recheck_quantities(session: Session, po: PurchaseOrder, content: dict[str, 
     current = data_version.current(session, po.tenant_id, lock=True)
     if current == checked_version:
         return current
-    run, by_variant = _plan_now(session, po, "approval-check")
-    changed = _moved(content, by_variant)
+    ev = _plan_now(session, po)
+    changed = _moved(content, ev.lines)
     if changed:
         raise StateConflict("Stock, sales or orders changed since these numbers were computed and the recommendation "
                             "moved. Use “Refresh” to load the new recommendation, then review and approve again",
                             details={"changed": changed})
-    return run.data_version
+    return ev.data_version
 
 
 def approve(session: Session, *, tenant_id: uuid.UUID, actor: Actor, po_id: uuid.UUID, expected_revision: int,

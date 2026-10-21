@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clawbot.api.deps import DbSession, TenantContext, get_tenant_context, require_permission
-from clawbot.domain import purchasing
+from clawbot.domain import purchasing, receiving
 from clawbot.domain.replenishment import codec, service
 from clawbot.persistence.models import ReplenishmentLine, ReplenishmentRun, Supplier, Variant
 
@@ -35,7 +35,8 @@ class RunRequest(BaseModel):
     as_of: AwareDatetime | None = Field(default=None, description="Plan as of this moment (default: now)")
 
 
-def _line_view(line: ReplenishmentLine, sku: str, supplier: str | None, open_po: str | None = None) -> dict[str, Any]:
+def _line_view(line: ReplenishmentLine, sku: str, supplier: str | None, open_po: str | None = None,
+               pos_pending: list[str] | None = None) -> dict[str, Any]:
     inputs = line.inputs
     chosen = next((o for o in inputs["offers"] if o["supplier_item_id"] == str(line.supplier_item_id)), None)
     return {
@@ -44,7 +45,7 @@ def _line_view(line: ReplenishmentLine, sku: str, supplier: str | None, open_po:
         "line_cost": None if line.line_cost is None else codec.dumps(line.line_cost), "currency": line.currency,
         "supplier_id": str(line.supplier_id) if line.supplier_id else None, "supplier": supplier,
         "supplier_item_id": str(line.supplier_item_id) if line.supplier_item_id else None,
-        "on_hand": inputs["on_hand"], "open_po": open_po,
+        "on_hand": inputs["on_hand"], "open_po": open_po, "pos_pending": pos_pending or [],
         "arrival": None if chosen is None else {"order_date": chosen.get("order_date"),
                                                 "delivery_date": chosen.get("delivery_date"),
                                                 "usable_date": chosen.get("usable_date")},
@@ -63,6 +64,8 @@ def _run_view(session: Session, run: ReplenishmentRun) -> dict[str, Any]:
     lines.sort(key=lambda l: (order[l.status], not l.needs_review, skus.get(l.variant_id, "")))
     # Items already on an active Tabula order (not yet sent) — the plan does not count these as inbound yet.
     on_po = purchasing.open_po_numbers(session, tenant_id=run.tenant_id, location_id=run.location_id)
+    # Received in Tabula, not yet visible in the POS that owns the stock: this plan's stock is understated.
+    pos_pending = receiving.pos_unconfirmed(session, tenant_id=run.tenant_id, location_id=run.location_id)
     return {
         "id": str(run.id), "location_id": str(run.location_id), "status": run.status,
         "cutoff": run.cutoff.isoformat(), "planning_date": run.planning_date.isoformat(),
@@ -71,8 +74,8 @@ def _run_view(session: Session, run: ReplenishmentRun) -> dict[str, Any]:
         "computed_by": {"kind": run.actor_kind, "user_id": str(run.actor_user_id) if run.actor_user_id else None,
                         "name": run.actor_name},
         "summary": run.summary, "plan_notes": run.plan_notes, "data_version": run.data_version,
-        "lines": [_line_view(l, skus.get(l.variant_id, "?"), names.get(l.supplier_id), on_po.get(l.variant_id))
-                  for l in lines],
+        "lines": [_line_view(l, skus.get(l.variant_id, "?"), names.get(l.supplier_id), on_po.get(l.variant_id),
+                             pos_pending.get(l.variant_id)) for l in lines],
     }
 
 

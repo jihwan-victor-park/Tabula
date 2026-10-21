@@ -12,16 +12,19 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from playwright.sync_api import Page, expect, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 UI = "http://127.0.0.1:5173"
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "var" / "demo"
 TZ = ZoneInfo("America/New_York")
+SENT_LABEL = re.compile(r"Sent \(test capture\)")
 
 
 def shot(page: Page, out: Path, name: str) -> None:
@@ -36,7 +39,11 @@ def sign_in(page: Page, user: str) -> None:
     page.get_by_role("button", name="Continue").click()
     page.get_by_role("button", name=re.compile("^(Open|Current — open)$")).first.click()
     page.goto(f"{UI}/ops/setup")
-    page.get_by_role("button", name=re.compile("Use this location|Selected")).first.click()
+    location = page.get_by_role("button", name=re.compile("Use this location|Selected")).first
+    try:
+        location.click(timeout=5000)
+    except PlaywrightTimeout:
+        pass  # a workspace without locations
 
 
 def import_file(page: Page, kind_label: str, path: Path, settings: dict[str, str]) -> None:
@@ -129,10 +136,11 @@ def main() -> None:
         expect(approve).to_be_enabled(timeout=15000)
         shot(page, out, "10_po_awaiting_approval")
         approve.click()
-        expect(page.get_by_text("Test sent (captured)").first).to_be_visible(timeout=30000)
+        expect(page.get_by_text(SENT_LABEL).first).to_be_visible(timeout=30000)
         shot(page, out, "11_po_test_sent")
+        phillips_url = page.url
         page.reload()
-        expect(page.get_by_text("Test sent (captured)").first).to_be_visible(timeout=15000)
+        expect(page.get_by_text(SENT_LABEL).first).to_be_visible(timeout=15000)
         shot(page, out, "12_po_after_refresh")
 
         # 6. A manager can submit but cannot approve (button disabled; server answers 403).
@@ -157,6 +165,74 @@ def main() -> None:
         print("manager approve via API ->", status)
         assert status == 403
         shot(page, out, "13_po_manager_cannot_approve")
+
+        # 7. CP7: the supplier answers (mock reply, capture mode) — a person reviews the reading, then applies it.
+        sign_in(page, "owner@pawsandco.example")
+        page.goto(phillips_url)
+        page.get_by_role("button", name="Mock reply (testing)").click()
+        page.get_by_label("Mock scenario").select_option("partial")
+        page.get_by_role("button", name="Read reply").click()
+        expect(page.get_by_role("button", name="Apply to the order")).to_be_visible(timeout=15000)
+        shot(page, out, "14_reply_review_partial")
+        page.get_by_role("button", name="Apply to the order").click()
+        expect(page.get_by_text("Supplier confirmed").first).to_be_visible(timeout=15000)
+        shot(page, out, "15_reply_applied_inbound")
+
+        # 8. The store plan now counts the confirmed 6 cases as arriving and drops the 2 that won't come.
+        page.goto(f"{UI}/ops/today")
+        page.get_by_role("button", name=re.compile("Recompute plan")).click()
+        page.wait_for_timeout(1500)
+        page.locator("tr", has_text="LITTER-20").first.get_by_role("button", name="Why?").click()
+        shot(page, out, "16_plan_after_partial_acceptance")
+
+        # 9. CP8: 5 of the 6 confirmed cases arrive, 1 damaged.
+        page.goto(phillips_url.replace("/ops/orders/", "/ops/receiving/"))
+        page.get_by_label("Arrived for line 1").fill("5")
+        page.get_by_label("Damaged for line 1").fill("1")
+        shot(page, out, "17_receiving_form")
+        key = page.evaluate("() => sessionStorage.getItem('tabula.receipt-key.' + location.pathname.split('/').pop())")
+        page.get_by_role("button", name="Record delivery").click()
+        expect(page.get_by_text("added to Tabula stock")).to_be_visible(timeout=15000)
+        shot(page, out, "18_receiving_recorded")
+        # The same submit again (a retry, a second tab) with the key the form used: the same receipt, no double count.
+        repeat = page.evaluate("""async (key) => {
+            const s = JSON.parse(localStorage.getItem('tabula.session.v1'));
+            const id = location.pathname.split('/').pop();
+            const h = {'Content-Type': 'application/json', 'X-Dev-User': s.user, 'X-Tenant-Id': s.tenantId};
+            const body = JSON.stringify({receipt_key: key, lines: [{line_no: 1, arrived_qty: '5', damaged_qty: '1'}]});
+            const r = await fetch(`/v1/purchase-orders/${id}/receipts`, {method: 'POST', headers: h, body});
+            const po = await (await fetch(`/v1/purchase-orders/${id}`, {headers: h})).json();
+            return [r.status, po.progress.lines[0].received, po.progress.receipts.length];
+        }""", key)
+        print("same receipt again ->", repeat)
+        assert repeat == [200, "5", 1]
+
+        # 10. Recompute: the plan sees 4 sellable cases added to stock and 1 case still expected.
+        page.goto(f"{UI}/ops/today")
+        page.get_by_role("button", name=re.compile("Recompute plan")).click()
+        page.wait_for_timeout(1500)
+        page.locator("tr", has_text="LITTER-20").first.get_by_role("button", name="Why?").click()
+        shot(page, out, "19_plan_after_receipt")
+
+        # 11. Restart the PO worker, reload: state comes from the database.
+        subprocess.run(["pkill", "-f", "clawbot.workflows.po_worker"], check=False)
+        worker = subprocess.Popen([str(ROOT / ".venv/bin/python"), "-m", "clawbot.workflows.po_worker"], cwd=ROOT,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        page.goto(phillips_url)
+        expect(page.get_by_text("Partially received").first).to_be_visible(timeout=15000)
+        shot(page, out, "20_po_after_worker_restart_and_reload")
+
+        # 12. Another workspace cannot open this order.
+        page.evaluate("""async () => {
+            await fetch('/v1/tenants', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Dev-User': 'rival@example.com'},
+                                        body: JSON.stringify({name: 'Rival store'})});
+        }""")
+        target = page.url
+        sign_in(page, "rival@example.com")
+        page.goto(target)
+        expect(page.get_by_text(re.compile("404"))).to_be_visible(timeout=15000)
+        shot(page, out, "21_other_workspace_404")
+        worker.terminate()
         browser.close()
 
 

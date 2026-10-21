@@ -1039,11 +1039,20 @@ class TenantCounter(Base):
 # ---------------------------------------------------------------------------
 
 # draft → awaiting_approval → (owner approves: approval + send job in one transaction) → queued
-# → test_sent (captured, never delivered to a supplier) | failed. Editing goes back to draft.
-PO_STATUSES = ("draft", "awaiting_approval", "queued", "test_sent", "failed", "cancelled")
+# → test_sent (captured, never delivered to a supplier) | delivery_unknown (a real transport may have
+# delivered it) | failed. Editing goes back to draft.
+# After sending, only a supplier reply a person reviewed moves it on: supplier_confirmed, or
+# changes_proposed (price / product / pack / quantity changes wait for the owner); receipts move it to
+# partially_received → received (all arrived; damage claims may still be open) → closed.
+PO_STATUSES = ("draft", "awaiting_approval", "queued", "test_sent", "delivery_unknown", "failed", "cancelled",
+               "supplier_confirmed", "changes_proposed", "partially_received", "received", "closed")
 PO_OPEN_STATUSES = ("draft", "awaiting_approval", "queued")
 # Not sent and not cancelled: can still be refreshed, edited, re-approved or cancelled.
 PO_ACTIVE_STATUSES = (*PO_OPEN_STATUSES, "failed")
+# Handed to the supplier (or possibly handed, for delivery_unknown): has po_lines, counts in the plan.
+PO_SENT_STATUSES = ("test_sent", "delivery_unknown", "supplier_confirmed", "changes_proposed",
+                    "partially_received", "received")
+PO_ACK_STATUSES = ("pending", "accepted", "partially_accepted", "counteroffer", "rejected")
 
 
 class PurchaseOrder(Base):
@@ -1054,6 +1063,7 @@ class PurchaseOrder(Base):
         ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
         ForeignKeyConstraint(["tenant_id", "supplier_id"], ["suppliers.tenant_id", "suppliers.id"]),
         CheckConstraint(_in("status", PO_STATUSES), name="status_valid"),
+        CheckConstraint(_in("ack_status", PO_ACK_STATUSES), name="ack_status_valid"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
@@ -1069,6 +1079,175 @@ class PurchaseOrder(Base):
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ack_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    # Supplier's time of the newest reply applied: an older reply never overwrites a newer one.
+    last_reply_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PoLine(Base):
+    """
+    What was ordered and what happened to it since (spec 10), in order units. Written
+    when the approved revision is handed to the supplier; afterwards only supplier
+    replies a person reviewed and receipts change it.
+
+      unconfirmed  = ordered − confirmed − rejected (all of ordered − rejected − cancelled − received while
+                     the supplier has not answered): held against reordering, never projected as arriving
+      outstanding  = confirmed + replacement − cancelled − received: confirmed, still to arrive
+    """
+
+    __tablename__ = "po_lines"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("po_id", "line_no"),
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
+        ForeignKeyConstraint(["tenant_id", "supplier_item_id"], ["supplier_items.tenant_id", "supplier_items.id"]),
+        CheckConstraint("ordered_qty >= 0 AND rejected_qty >= 0 AND cancelled_qty >= 0 AND received_qty >= 0 "
+                        "AND damaged_qty >= 0 AND damaged_qty <= received_qty AND replacement_qty >= 0",
+                        name="quantities_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    line_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)  # the approved revision it came from
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    supplier_item_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    sku: Mapped[str] = mapped_column(String(120), nullable=False)
+    supplier_sku: Mapped[str] = mapped_column(String(120), nullable=False)
+    order_uom: Mapped[str] = mapped_column(String(20), nullable=False)
+    units_per_order_uom: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    ordered_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    confirmed_qty: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))  # None = supplier has not answered
+    rejected_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    cancelled_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    received_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)  # arrived, incl. damaged
+    damaged_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    replacement_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=0)  # supplier-confirmed
+    eta: Mapped[date | None] = mapped_column(Date)
+    # A supplier change (price, product, pack, more than ordered) waiting for the owner.
+    proposal: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    replaces_line_no: Mapped[int | None] = mapped_column(Integer)  # an accepted substitute
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+SUPPLIER_REPLY_SOURCES = ("mock", "paste", "upload")
+SUPPLIER_REPLY_STATUSES = ("pending_review", "applied", "dismissed", "stale")
+
+
+class SupplierReply(Base):
+    """A supplier's answer as received (raw text kept as evidence) and what a person decided it means."""
+
+    __tablename__ = "supplier_replies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "po_id", "raw_sha256"),
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+        CheckConstraint(_in("source", SUPPLIER_REPLY_SOURCES), name="source_valid"),
+        CheckConstraint(_in("status", SUPPLIER_REPLY_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(10), nullable=False)
+    file_name: Mapped[str | None] = mapped_column(String(255))
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    replied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # the supplier's time
+    parsed: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    applied: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending_review")
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Receipt(Base):
+    """One delivery recorded against a PO. `receipt_key` makes a repeated submit the same receipt."""
+
+    __tablename__ = "receipts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "po_id", "receipt_key"),
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    receipt_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    request_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    notes: Mapped[str | None] = mapped_column(String(500))
+    recorded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created_at()
+
+
+# ledger_posted: Tabula owns this location's stock and the sellable units were added to the ledger.
+# pending_pos: the POS owns stock and Tabula cannot write it; someone must enter it in the POS.
+# pos_reported: a person says it was entered; confirmed once a POS stock reading newer than that arrives.
+RECEIPT_POS_STATUSES = ("ledger_posted", "pending_pos", "pos_reported")
+
+
+class ReceiptLine(Base):
+    __tablename__ = "receipt_lines"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        ForeignKeyConstraint(["tenant_id", "receipt_id"], ["receipts.tenant_id", "receipts.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "po_line_id"], ["po_lines.tenant_id", "po_lines.id"]),
+        CheckConstraint("arrived_qty > 0 AND damaged_qty >= 0 AND damaged_qty <= arrived_qty", name="quantities_valid"),
+        CheckConstraint(_in("pos_status", RECEIPT_POS_STATUSES), name="pos_status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    receipt_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    po_line_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    arrived_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)  # order units
+    damaged_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    sellable_base_qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    pos_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    pos_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    pos_reported_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created_at()
+
+
+RECEIPT_ISSUE_STATUSES = ("open", "replacement_confirmed", "credit_confirmed", "written_off")
+
+
+class ReceiptIssue(Base):
+    """
+    Damaged (or otherwise unusable) goods to settle with the supplier. A replacement
+    only counts as inbound once the supplier has confirmed it (status replacement_confirmed).
+    """
+
+    __tablename__ = "receipt_issues"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "receipt_line_id"], ["receipt_lines.tenant_id", "receipt_lines.id"]),
+        CheckConstraint(_in("status", RECEIPT_ISSUE_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    po_line_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    receipt_line_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="damaged")
+    qty: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)  # order units
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="open")
+    resolution_qty: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    resolution_eta: Mapped[date | None] = mapped_column(Date)
+    note: Mapped[str | None] = mapped_column(String(500))
+    resolved_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
 
 
 class PoRevision(Base):

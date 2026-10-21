@@ -74,7 +74,7 @@ function Plan({ locationId }: { locationId: string }) {
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Stat label="Items to order" value={String(orderLines.length)} />
-            <Stat label="On hold (check open orders)" value={String(run.summary.lines.on_hold ?? 0)} />
+            <Stat label="On hold — already ordered" value={String(run.summary.lines.on_hold ?? 0)} />
             <Stat label="Need review" value={String(run.summary.needs_review)} />
             <Stat label="Planned spend (items only)" value={spend} />
           </div>
@@ -101,7 +101,11 @@ function Plan({ locationId }: { locationId: string }) {
                           <input type="checkbox" aria-label={`Select ${l.sku}`} checked={selected.has(l.variant_id)}
                                  onChange={(e) => setSelected((s) => { const n = new Set(s); e.target.checked ? n.add(l.variant_id) : n.delete(l.variant_id); return n; })} />)}</td>
                         <td className="font-medium">{l.sku}</td>
-                        <td><StatusChip status={l.status} />{l.open_po && <div className="mt-1 text-[11px] text-[#1D4ED8]">on {l.open_po}</div>}</td>
+                        <td>
+                          <StatusChip status={l.status === 'no_order' && l.reasons.some((r) => r.code === 'covered_by_open_orders') ? 'covered' : l.status} />
+                          {l.open_po && <div className="mt-1 text-[11px] text-[#1D4ED8]">draft {l.open_po} (not sent)</div>}
+                          {l.pos_pending.length > 0 && <div className="mt-1 text-[11px] font-medium text-[#991B1B]">stock mismatch: received, not in POS</div>}
+                        </td>
                         <td className="text-right font-mono">{num(l.on_hand)}</td>
                         <td className="text-right font-mono">{num(l.daily_demand)}</td>
                         <td className="text-right font-mono">

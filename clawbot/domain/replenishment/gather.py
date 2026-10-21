@@ -25,17 +25,21 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from clawbot.domain import sales, suppliers, tenancy
 from clawbot.domain.replenishment.calendar import SupplierCalendar, arrival_day_for_eta, arrival_for_order_now
 from clawbot.domain.replenishment.engine import ZERO, InboundLine, ItemInputs, OfferInputs, Policy, SupplierTerms
-from clawbot.domain.units import require_same_currency, CurrencyMismatch
+from clawbot.domain.units import require_same_currency, to_base_qty, CurrencyMismatch
 from clawbot.persistence.models import (
+    PO_SENT_STATUSES,
+    CapturedMessage,
     ExternalOpenOrderLine,
     InventoryMovement,
     InventorySnapshot,
+    PoLine,
+    PurchaseOrder,
     ReplenishmentItemSetting,
     SalesLine,
     Supplier,
@@ -182,12 +186,19 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
     # ---- open orders placed outside Tabula
     inbound: dict[uuid.UUID, list[InboundLine]] = defaultdict(list)
     supplier_names = {s.id: s.name for s in session.scalars(select(Supplier).where(Supplier.tenant_id == tenant_id))}
+    # An open-orders export can list Tabula's own sent orders too; those are counted from po_lines below, once.
+    tabula_numbers = {(sid, number.upper()) for sid, number in session.execute(
+        select(PurchaseOrder.supplier_id, PurchaseOrder.number).where(
+            PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.location_id == location_id,
+            PurchaseOrder.sent_at.is_not(None)))}  # incl. closed/failed: an old export must not revive them
     for line in session.scalars(
         select(ExternalOpenOrderLine).where(
             ExternalOpenOrderLine.tenant_id == tenant_id, ExternalOpenOrderLine.location_id == location_id,
             ExternalOpenOrderLine.outstanding_qty > 0)
         .order_by(ExternalOpenOrderLine.external_po_number, ExternalOpenOrderLine.supplier_id, ExternalOpenOrderLine.id)
     ):
+        if (line.supplier_id, (line.external_po_number or "").strip().upper()) in tabula_numbers:
+            continue
         arrival = (arrival_day_for_eta(eta=line.expected_at, now=cutoff, store_timezone=location.timezone)
                    if line.expected_at else None)
         since = line.ordered_at or line.created_at
@@ -196,6 +207,31 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
             quantity=line.outstanding_qty, confirmed=line.supplier_confirmed, arrival_day=arrival,
             age_days=max((cutoff - since).days, 0) if since else None,
         ))
+
+    # ---- Tabula's own orders after they were handed to the supplier (po_progress.py)
+    from clawbot.domain import po_progress
+
+    captured = set(session.scalars(select(CapturedMessage.po_id).where(CapturedMessage.tenant_id == tenant_id)))
+    for po, line in session.execute(
+        select(PurchaseOrder, PoLine).join(PoLine, and_(PoLine.tenant_id == PurchaseOrder.tenant_id,
+                                                        PoLine.po_id == PurchaseOrder.id))
+        .where(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.location_id == location_id,
+               PurchaseOrder.status.in_(PO_SENT_STATUSES), PurchaseOrder.sent_at <= cutoff)
+        .order_by(PurchaseOrder.number, PoLine.line_no)
+    ):
+        st = po_progress.state(line)
+        ref = f"{po.number} ({supplier_names.get(po.supplier_id, 'supplier')}{', test capture' if po.id in captured else ''})"
+        age = max((cutoff - po.sent_at).days, 0)
+        if st.unconfirmed > 0:  # sent, the supplier has not said yes: hold, never projected as arriving
+            inbound[line.variant_id].append(InboundLine(
+                reference=f"{ref}, sent — not confirmed", quantity=to_base_qty(st.unconfirmed, line.units_per_order_uom),
+                confirmed=False, arrival_day=None, age_days=age))
+        if st.outstanding > 0:
+            eta = (arrival_day_for_eta(eta=datetime.combine(line.eta, time(12), ZoneInfo(location.timezone)), now=cutoff,
+                                       store_timezone=location.timezone) if line.eta else None)
+            inbound[line.variant_id].append(InboundLine(
+                reference=f"{ref}, confirmed", quantity=to_base_qty(st.outstanding, line.units_per_order_uom),
+                confirmed=True, arrival_day=eta, age_days=age))
 
     settings = {s.variant_id: s for s in session.scalars(
         select(ReplenishmentItemSetting).where(ReplenishmentItemSetting.tenant_id == tenant_id,

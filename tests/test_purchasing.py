@@ -327,7 +327,9 @@ def test_send_job_that_ends_without_a_result_does_not_leave_the_order_queued(rea
     po = _submit(ready, _draft(ready))
     _approve(ready, po)
     with transaction() as s:
-        s.execute(text("UPDATE outbox SET status = 'unknown' WHERE topic = 'po.send'"))
+        # A capture-mode worker claimed it (and recorded the mode), then its lease ran out.
+        s.execute(text("UPDATE outbox SET status = 'unknown', payload = payload || '{\"send_mode\": \"capture\"}' "
+                       "WHERE topic = 'po.send'"))
     po_worker.run_once()
     done = ready.get(f"/v1/purchase-orders/{po['id']}").json()
     assert done["status"] == "failed" and done["captured_message"] is None

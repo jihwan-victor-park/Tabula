@@ -26,7 +26,7 @@
 CP0 고객·데이터 확인 (사람 작업, CP1과 병행)
 CP1 운영 기반 ──► CP2 카탈로그·단위 ──► CP3 CSV/Sheets 수입 ──► CP5 보충 엔진 ──► CP6 PO·승인
                                   └──► CP4 첫 POS 커넥터 (⏳ 앱 심사와 병행) ──┘
-CP6 ──► CP7 공급업체 전송·확인 ──► CP8 입고 ──► CP9 Invoice 대조   ← YC 데모 gate
+CP6 ──► CP7 공급업체 회신·확인 ──► CP8 입고 ──► CP9 Invoice 대조   ← YC 데모 gate
 CP10 화면(Today/Orders/Receiving)은 CP5부터 각 CP와 함께 붙인다
 CP11 운영 신뢰성 · CP12 SaaS 구독 · CP13 제한 자동화 · CP14 확장
 ```
@@ -226,37 +226,61 @@ Gate: 명세 7.3 예시(5상자, 품절 1일) 통과(엔진 단독 + import 경�
 Gate: 서버 재시작 뒤 승인 상태 유지(DB가 기준) ✓. 두 사람 동시 승인 → 승인 1·outbox 1 ✓(테스트). 승인 뒤 단가 변경 → 재승인 필요 ✓. 승인 뒤 입력 변경으로 추천이 움직이면 전송 차단 ✓. **실제 공급업체 전송은 이 빌드에서 거부**(`live` 모드 refused, transport 없음) — 실제 발송은 CP7에서 수신 확인 페이지·결과 불명 처리와 함께.
 
 남은 한계(명시):
-- 계획은 Tabula의 활성 PO를 입고 예정으로 세지 않는다(같은 품목 재초안은 막지만, test_sent 뒤에는 다시 전량 추천). 보낸·확인된 PO를 입고 예정으로 넣는 것은 CP7.
-- 승인 성공 시 재계산된 run이 그 위치의 현재 계획이 된다(계산 주체 "approval-check"로 표시).
+- ~~계획이 Tabula PO를 세지 않음~~ → CP7.11에서 해결.
+- ~~승인 재계산이 위치의 현재 계획을 바꿈~~ → 해결: 새로고침·승인·전송 검사는 저장하지 않는 계산(`service.evaluate`)을 쓰고, 매장 계획(Today)은 사람이 재계산할 때만 바뀐다. PO 화면은 "이 주문의 자체 검사"로 따로 표시.
 - 동시 초안 테스트는 경쟁 조건 기반이라 lock을 빼도 매번 실패하지는 않는다(3회 중 2회 실패 확인).
 
 ---
 
-## CP7 — 공급업체 전송·확인 `[SUP-01]`
+## [~] CP7 — 공급업체 회신·확인 `[SUP-01]` — 구현 완료 · mock/붙여넣기/파일 회신으로 검증 · 실제 공급업체 미검증 · 실제 발송 없음(capture)
 
-- [ ] 7.1 PO PDF/CSV 생성, 사전 검증된 주소로만 이메일 전송 (outbox worker)
-- [ ] 7.2 전송 결과 불명(timeout)은 재전송하지 않고 owner task로
-- [ ] 7.3 공급업체 확인 페이지: 만료 링크, GET은 읽기 전용, 수락은 POST + nonce + 유효기간 + 수취인 확인
-- [ ] 7.4 전체 수락 / 부분 수락 / 가격 변경 / ETA 변경 / 공급 불가
-- [ ] 7.5 변경 제안은 counteroffer revision으로, merchant 승인 후 확정. 대체품은 명시적 승인 전 주문 안 함
-- [ ] 7.6 `supplier_acknowledgements`: 발송 ≠ 접수 ≠ 납기 확정
-- [ ] 7.7 문서·이메일 속 지시문은 데이터로만 처리 (prompt injection 차단)
-- [ ] 7.8 전송 대상은 **검증된** order recipient 연락처만 (미검증 연락처 추가는 승인 상태에 영향 없음)
-- [ ] 7.9 outbox `unknown` 메시지 → owner task + provider 상태 조회로 해소
+- [~] 7.1 PO 본문·CSV 첨부 생성 + capture 저장 (CP6). **실제 이메일 전송은 없음** — 아래 "실제 발송 전 필수" 참고
+- [x] 7.2 전송 결과 불명: capture는 DB로 확인 가능(capture 기록 = 전송, 없음 = 미전송). **그 밖의 transport는 worker가 넘긴 뒤 죽으면 `delivery_unknown`**: 자동 재전송 없음(outbox `unknown` 유지), 계획은 수량을 계속 보류, owner가 공급업체 확인 후 "받지 못함"으로만 해제 (`supplier_contact.outcome_verifiable`, 테스트는 비검증 transport를 흉내 냄)
+- [ ] 7.3 공급업체 확인 페이지(만료 링크·POST+nonce) — 지금은 회신을 사람이 Tabula에 넣는 방식만
+- [x] 7.4 회신 해석: 전체 수락 / 부분 수락(나머지 거절 또는 backorder) / 품절 / 가격 변경 / 납기 변경 / 대체품 / 초과 수량 / 잔량 취소. 결정적 parser(LLM 없음), 줄마다 원문 근거(줄 번호), 인용된 원 PO 줄은 무시. 입력: mock 회신(capture 모드 전용, 표시됨), 이메일 붙여넣기, .txt/.eml(Date 헤더)/.csv 업로드
+- [x] 7.5 가격·상품·포장·초과 수량 변경은 바로 반영하지 않고 line `proposal` → **owner만** proposal digest에 묶어 수락/거절. 대체품은 확정된 supplier item이어야 수락 가능(새 line, 원래 line은 거절). 수락 전에는 보류(입고 예정 아님)
+- [x] 7.6 상태 분리: 발송(test_sent / delivery_unknown) ≠ 공급업체 응답(`ack_status` pending/accepted/partially_accepted/counteroffer/rejected) ≠ 입고. capture 성공을 수락으로 처리하지 않음
+- [x] 7.7 회신 안의 문장은 데이터로만 처리 (실행·지시 따름 없음)
+- [x] 7.10 같은 회신 원문 = 같은 회신(sha256 고유), 확정 수량은 절대값 → 두 번 적용해도 변화 없음. 공급업체 시각이 이미 적용된 회신보다 오래된 회신은 적용 불가(`stale`)
+- [x] 7.11 Tabula PO를 보충 계산에 연결: 초안(미발송)은 입고 아님·같은 품목 재초안만 막음 / 발송 후 미확인 = 재주문 보류, 도착 예정 아님 / 확인 = 확정 수량·ETA로 도착 예정 / 입고분은 잔량에서 제외 / 거절·취소는 그 수량만 빠지고 재계산. 화면: "On hold — already ordered", "Covered by incoming order", "Enough stock" 구분, 계획 단계에 PO 번호 표시
+- [ ] 7.8 실제 발송 시 검증된 수취인 재확인은 CP6 전송 직전 검사로 구현됨 — 실제 transport 연결 시 재검토
+- [ ] 7.9 outbox `unknown` → owner task 목록(CP10 Today) — 지금은 PO 화면의 delivery_unknown 안내
 
-Gate: 실제 공급업체 1곳이 실제 PO 1건을 확인 페이지 또는 회신으로 확인. 이메일 보안 스캐너가 링크를 열어도 수락되지 않음. ⏳ 외부: 공급업체 협조
+독립 리뷰 1회(사용 한도로 한 번 중단 후 재개) 반영: 제안된 변경(가격·포장·대체·초과)을 manager가 "수락"으로 바꿔 owner 결정을 건너뛰던 결함 → owner만 가능·기록, 대체품 수락 뒤 "all confirmed" 회신·같은 메일 재붙여넣기로 이중 계산 → 대체된 line 제외·원문 정규화 hash, 시간·PO 번호·가격·"in 2 days"를 수량으로 읽던 parser → 단위어/확인 동사 옆 숫자만, 초과 수량 거절 시 line 전체 거절 → 주문 수량 유지, 날짜 없는 붙여넣기 회신 순서 → 공급업체 시각 필수, 결과 불명 판단을 재시작 시점 mode로 하던 것 → claim 시 mode 기록, 닫힌 Tabula PO가 오래된 export로 되살아남 → 보낸 적 있는 모든 PO와 대조, 미응답 line의 확정 교체품 → 도착 예정으로.
+
+Gate: 실제 공급업체 1곳이 실제 PO 1건을 확인 — **미검증(⏳ 외부, 실제 발송 금지 상태)**. 이메일 보안 스캐너 링크 문제는 확인 페이지(7.3)와 함께.
+
+**실제 발송을 켜기 전 필수 (capture 개발은 막지 않음):**
+- [ ] L1 예산 예약(주문당·주간 한도)을 승인과 같은 transaction에
+- [ ] L2 승인 정책 version을 승인 digest에 묶기
+- [ ] L3 실제 transport adapter(이메일/API) + delivery_unknown 운영 절차 + 공급업체 확인 페이지(7.3)
+- [ ] L4 일반 Idempotency-Key 저장소(6.9)
+- [ ] L5 legacy agent 경로 정리(6.6/6.10) — 실제 발송 경로는 PO 서비스 하나뿐임을 보장
+- [ ] L6 독립 보안 리뷰 + `docs/SUPPLIER_CONTACT_POLICY.md` 개정 승인(사용자 결정)
 
 ---
 
-## CP8 — 입고 `[REC-01] [UI-02]`
+## [~] CP8 — 입고 `[REC-01] [UI-02]` — 구현 완료 · 브라우저·테스트 검증(합성 데이터) · 실제 매장 미검증
 
-- [ ] 8.1 `receipts, receipt_lines`: draft → verified → posted → corrected
-- [ ] 8.2 부분 입고·손상·거절·초과·다른 SKU, 잔량은 공급업체 취소 확인 전까지 유지
-- [ ] 8.3 입고 게시 = CP1 재고 원장 이동 1회 (write owner가 POS면 `post_receipt` 경로)
-- [ ] 8.4 모바일 Receiving: scan + 카메라 거부·미인식 시 수동 입력
-- [ ] 8.5 실측 lead time 기록 → supplier 조건에 반영
+- [~] 8.1 `receipts, receipt_lines` (receipt_key로 재전송·두 탭 동시 제출 = 같은 입고). verified/corrected 단계와 입고 수정은 아직 없음
+- [x] 8.2 도착·손상·판매 가능·잔량: 10 주문 → 8 도착(1 손상) → 판매 가능 7 · 손상 1 · 잔량 2. 예상보다 많은 도착은 거절(초과분 처리 흐름 없음). 손상분 = `receipt_issues` open → 공급업체가 확인한 교체만 입고 예정에 추가(credit / write-off는 추가 없음)
+- [x] 8.3 Tabula 소유 위치: 판매 가능 수량만 원장 `receipt` 이동 1회(receipt line key). **POS 소유 위치(Square, 읽기 전용)**: 원장에 쓰지 않고 `pending_pos` → "POS에 입력함" 표시 → POS 재고 reading(그 뒤 시각)이 오면 해소. 그 전에는 화면에 재고 불일치 표시 + 그 품목이 든 PO는 제출·승인·전송 차단(`stock_not_confirmed_in_pos`)
+- [ ] 8.4 모바일 Receiving(scan) — 지금은 데스크톱 폼
+- [ ] 8.5 실측 lead time 기록
 
-Gate: 10상자 중 8 입고·1 손상·나머지 backorder 시나리오에서 잔량과 재고가 정확하고 재고는 한 번만 게시.
+Gate: 10상자 중 8 입고·1 손상·잔량 2 시나리오에서 잔량·재고 정확, 재고 1회 게시 ✓(테스트·브라우저). 동시 입고는 PO 행 잠금으로 직렬화(잠금을 쥔 채 순서를 제어한 재현 테스트) ✓.
+
+---
+
+## 연결·데이터 항목별 상태 (완료로 표시하지 않음)
+
+- [ ] D1 Square Sandbox 실호출 — 사용자 계정(U6) 필요
+- [ ] D2 Square token refresh job (4.2b)
+- [ ] D3 Square 정기 동기화·야간 대조 스케줄 (4.6)
+- [ ] D4 CSV ↔ Square 판매 원본 선택·인계 규칙 (4.8a)
+- [ ] D5 환불 주문 모델 (refund order)
+- [ ] D6 실제 고객 데이터 검증 (CP0)
+- [ ] D7 Square 재고 쓰기(입고를 POS에 반영) — 지금은 읽기 전용, 사람이 POS에 입력
 
 ---
 

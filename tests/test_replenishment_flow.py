@@ -89,7 +89,7 @@ def test_spec_example_through_imports(shop):
     assert line["data_as_of"]["stock_source"] == "Tabula ledger (last count)" and line["data_as_of"]["sales_through"]
     assert [s["label"] for s in line["steps"]][:3] == ["Stock on hand (estimated now)", "Daily demand", "Order arrives (usable from)"]
     assert [r["code"] for r in line["reasons"]] == ["stockout_before_delivery"]
-    assert run["policy_version"] == 0 and run["engine_version"] == "repl-2" and run["input_digest"]
+    assert run["policy_version"] == 0 and run["engine_version"] == "repl-3" and run["input_digest"]
     assert run["computed_by"]["kind"] == "human"
 
 

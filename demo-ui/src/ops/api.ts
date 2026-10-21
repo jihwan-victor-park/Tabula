@@ -100,6 +100,7 @@ export type Recommendations = { location_id: string; stale: boolean; stale_reaso
 export type PoSummary = {
   id: string; number: string; status: string; revision: number; supplier: string; ship_to: string; currency: string;
   lines: number; estimated_total: string; needs_attention: boolean; created_at: string; updated_at: string;
+  ack_status: string; sent_at: string | null; awaiting_reply: boolean; expected_lines: number; open_issues: number;
 };
 export type PoLine = {
   line_no: number; sku: string; name: string; supplier_sku: string; order_uom: string; units_per_order_uom: string;
@@ -133,6 +134,36 @@ export type PoDetail = PoSummary & {
     revision: number; at: string; note: string } | null;
   revisions: { revision: number; reason: string | null; at: string; by: string; total: string }[];
   history: { action: string; by: string; at: string; reason: string | null }[];
+  progress: Progress | null;
+};
+
+export type Proposal = {
+  kind: 'price' | 'pack' | 'substitute' | 'qty_increase'; digest: string; reply_id: string; eta: string | null;
+  unit_price?: string; units_per_order_uom?: string; substitute_sku?: string; qty?: string;
+  was: { unit_price: string; units_per_order_uom: string; supplier_sku: string; ordered_qty: string };
+};
+export type ProgressLine = {
+  line_no: number; sku: string; supplier_sku: string; order_uom: string; units_per_order_uom: string; unit_price: string;
+  ordered: string; confirmed: string | null; rejected: string; cancelled: string; received: string; damaged: string;
+  sellable_received: string; replacement: string; unconfirmed: string; outstanding: string; eta: string | null;
+  proposal: Proposal | null; replaces_line_no: number | null; pos_pending: string[];
+};
+export type ReplyReading = {
+  line_no: number; sku: string; supplier_sku: string; action: string; confirmed_qty: string | null; eta: string | null;
+  backorder: boolean; change: { kind: string; unit_price?: string; units_per_order_uom?: string; substitute_sku?: string; qty?: string } | null;
+  evidence: { line: number; text: string }[];
+};
+export type Reply = {
+  id: string; source: string; file_name: string | null; status: string; replied_at: string; recorded_at: string; raw_text: string;
+  parsed: { format: string; lines: ReplyReading[]; warnings: string[]; replied_at_source?: string };
+  applied: { decisions: unknown[] } | null;
+};
+export type Progress = {
+  sent_at: string | null; ack_status: string; last_reply_at: string | null; lines: ProgressLine[]; replies: Reply[];
+  receipts: { id: string; receipt_key: string; received_at: string; notes: string | null;
+    lines: { id: string; line_no: number; arrived: string; damaged: string; sellable_units: string; pos_status: string }[] }[];
+  issues: { id: string; line_no: number; kind: string; qty: string; status: string; resolution_qty: string | null;
+    resolution_eta: string | null; note: string | null }[];
 };
 
 export type ImportRecord = {

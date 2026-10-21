@@ -80,6 +80,11 @@ _PERMISSIONS: dict[str, tuple[frozenset[str], bool, bool]] = {
     "po.draft": (frozenset({"owner", "manager"}), False, False),
     "po.approve": (frozenset({"owner"}), False, False),
     "po.send": (frozenset(), False, True),
+    # A supplier's reply is recorded and applied by a person who read it; changes to price,
+    # product, pack or quantity are decided by the owner (po.approve).
+    "po.reply": (frozenset({"owner", "manager"}), False, False),
+    "receiving.record": (frozenset({"owner", "manager", "receiver"}), False, False),
+    "receiving.resolve": (frozenset({"owner", "manager"}), False, False),
     "connectors.sync": (frozenset({"owner", "manager"}), False, True),
 }
 

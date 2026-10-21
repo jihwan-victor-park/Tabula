@@ -7,7 +7,7 @@ import { AppShell, Sidebar, SymbolIcon, cn } from '../components/ui';
 import { ApiError, loadSession, saveSession } from './api';
 
 export function OpsShell({ active, title, icon, actions, children }: {
-  active: 'today' | 'imports' | 'orders' | 'setup';
+  active: 'today' | 'imports' | 'orders' | 'receiving' | 'setup';
   title: string; icon: string; actions?: ReactNode; children: ReactNode;
 }) {
   const session = loadSession();
@@ -23,6 +23,7 @@ export function OpsShell({ active, title, icon, actions, children }: {
               item('Today', 'today', '/ops/today', 'today'),
               item('Data imports', 'upload_file', '/ops/imports', 'imports'),
               item('Purchase orders', 'receipt_long', '/ops/orders', 'orders'),
+              item('Receiving', 'inventory_2', '/ops/receiving', 'receiving'),
               item('Workspace', 'storefront', '/ops/setup', 'setup'),
             ] },
             { title: 'Legacy demo', items: [{ label: 'Hackathon dashboard', icon: 'history', href: '/dashboard' }] },
@@ -84,11 +85,30 @@ const STATUS: Record<string, { label: string; tone: string; icon: string }> = {
   draft: { label: 'Draft', tone: 'bg-[#FDF5EF] text-[#1B3A4B] border-[#E8D4C6]', icon: 'edit_note' },
   awaiting_approval: { label: 'Awaiting approval', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'hourglass_top' },
   queued: { label: 'Queued', tone: 'bg-[#E0ECFF] text-[#1D4ED8] border-[#B8CFFB]', icon: 'schedule_send' },
-  test_sent: { label: 'Test sent (captured)', tone: 'bg-[#D1FAE5] text-[#065F46] border-[#9BE3C3]', icon: 'mark_email_read' },
+  test_sent: { label: 'Sent (test capture) — awaiting supplier', tone: 'bg-[#E0ECFF] text-[#1D4ED8] border-[#B8CFFB]', icon: 'mark_email_read' },
+  delivery_unknown: { label: 'Delivery unknown — check with supplier', tone: 'bg-[#FEE2E2] text-[#991B1B] border-[#F7B4B4]', icon: 'help' },
+  supplier_confirmed: { label: 'Supplier confirmed', tone: 'bg-[#D1FAE5] text-[#065F46] border-[#9BE3C3]', icon: 'verified' },
+  changes_proposed: { label: 'Supplier proposed changes', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'change_circle' },
+  partially_received: { label: 'Partially received', tone: 'bg-[#E0ECFF] text-[#1D4ED8] border-[#B8CFFB]', icon: 'inventory_2' },
+  received: { label: 'Received — issues open', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'inventory_2' },
+  closed: { label: 'Closed', tone: 'bg-[#F1F1F1] text-[#555] border-[#DDD]', icon: 'task_alt' },
+  pending_review: { label: 'Needs review', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'rule' },
+  dismissed: { label: 'Dismissed', tone: 'bg-[#F1F1F1] text-[#555] border-[#DDD]', icon: 'block' },
+  stale: { label: 'Older than applied reply', tone: 'bg-[#F1F1F1] text-[#555] border-[#DDD]', icon: 'history' },
+  ack_pending: { label: 'No answer yet', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'hourglass_top' },
+  ack_accepted: { label: 'Accepted', tone: 'bg-[#D1FAE5] text-[#065F46] border-[#9BE3C3]', icon: 'verified' },
+  ack_partially_accepted: { label: 'Partly accepted', tone: 'bg-[#E0ECFF] text-[#1D4ED8] border-[#B8CFFB]', icon: 'rule' },
+  ack_counteroffer: { label: 'Proposed changes', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'change_circle' },
+  ack_rejected: { label: 'Cannot supply', tone: 'bg-[#FEE2E2] text-[#991B1B] border-[#F7B4B4]', icon: 'block' },
+  covered: { label: 'Covered by incoming order', tone: 'bg-[#E0ECFF] text-[#1D4ED8] border-[#B8CFFB]', icon: 'local_shipping' },
+  open: { label: 'Open', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'report' },
+  replacement_confirmed: { label: 'Replacement confirmed', tone: 'bg-[#D1FAE5] text-[#065F46] border-[#9BE3C3]', icon: 'autorenew' },
+  credit_confirmed: { label: 'Credit confirmed', tone: 'bg-[#D1FAE5] text-[#065F46] border-[#9BE3C3]', icon: 'payments' },
+  written_off: { label: 'Written off', tone: 'bg-[#F1F1F1] text-[#555] border-[#DDD]', icon: 'delete' },
   failed: { label: 'Failed', tone: 'bg-[#FEE2E2] text-[#991B1B] border-[#F7B4B4]', icon: 'error' },
   cancelled: { label: 'Cancelled', tone: 'bg-[#F1F1F1] text-[#555] border-[#DDD]', icon: 'block' },
   order: { label: 'Order', tone: 'bg-[#E8654A14] text-[#B4462F] border-[#F2B6A7]', icon: 'add_shopping_cart' },
-  on_hold: { label: 'On hold', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'pause_circle' },
+  on_hold: { label: 'On hold — already ordered', tone: 'bg-[#FEF3C7] text-[#8A5A00] border-[#F5D58A]', icon: 'pause_circle' },
   no_order: { label: 'Enough stock', tone: 'bg-[#D1FAE5] text-[#065F46] border-[#9BE3C3]', icon: 'check_circle' },
   no_supplier: { label: 'No supplier', tone: 'bg-[#FEE2E2] text-[#991B1B] border-[#F7B4B4]', icon: 'link_off' },
   insufficient_data: { label: 'Not enough data', tone: 'bg-[#F1F1F1] text-[#555] border-[#DDD]', icon: 'help' },

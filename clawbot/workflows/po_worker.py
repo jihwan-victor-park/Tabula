@@ -24,7 +24,7 @@ from datetime import timedelta
 
 from sqlalchemy import and_, func, select
 
-from clawbot.domain import audit, outbox, purchasing
+from clawbot.domain import audit, outbox, po_progress, purchasing
 from clawbot.domain.errors import PermissionDenied
 from clawbot.persistence.db import transaction
 from clawbot.persistence.models import CapturedMessage, OutboxMessage, PoApproval, PoSendAttempt, PurchaseOrder
@@ -99,21 +99,43 @@ def _send(session, message) -> None:
     session.add(CapturedMessage(tenant_id=po.tenant_id, po_id=po.id, revision=payload["revision"], to_address=recipient,
                                 subject=subject, body_text=body, attachment_name=f"{content['po_number']}.csv",
                                 attachment_csv=attachment))
-    po.status = "test_sent"
+    po_progress.hand_over(session, po, content, status="test_sent")  # sent, not accepted: the plan holds it
     session.add(PoSendAttempt(**log_row, mode=decision.mode, recipient=recipient, outcome="captured",
                               detail="Captured in Tabula; nothing was delivered to the supplier"))
     audit.record(session, tenant_id=po.tenant_id, actor=ACTOR, action="po.test_sent", object_type="purchase_order",
                  object_id=po.id, after={"revision": payload["revision"], "mode": decision.mode, "recipient": recipient})
 
 
+def _outcome_lost(session, po, message, revision: int, why: str) -> None:
+    """
+    The sender stopped without reporting. Capture can prove what happened from the
+    database; a transport that hands the message to someone else cannot, so the
+    order becomes delivery_unknown: the plan keeps holding its quantities, the job
+    stays `unknown` (never resent automatically) and the owner checks with the supplier.
+    """
+    # Unknown mode (never claimed by a worker that recorded it) is treated as unverifiable: conservative.
+    mode = (message.payload.get("send_mode") if message else None) or "unrecorded"
+    captured = session.scalars(select(CapturedMessage.id).where(
+        CapturedMessage.po_id == po.id, CapturedMessage.revision == revision)).first()
+    if supplier_contact.outcome_verifiable(mode):
+        if captured:
+            po_progress.hand_over(session, po, purchasing.revision(session, po).content, status="test_sent")
+            outcome, detail = "captured", f"{why} A capture was recorded."
+        else:
+            po.status = "failed"
+            outcome, detail = "unknown", f"{why} No capture was recorded, so nothing was sent; refresh and approve again."
+    else:
+        po_progress.hand_over(session, po, purchasing.revision(session, po).content, status="delivery_unknown")
+        outcome, detail = "unknown", (f"{why} The {mode} transport may already have delivered it: check with the "
+                                      "supplier before doing anything. It will not be resent automatically.")
+    session.add(PoSendAttempt(tenant_id=po.tenant_id, po_id=po.id, revision=revision, mode=mode, outcome=outcome,
+                              outbox_message_id=message.id if message else None, detail=detail))
+    audit.record(session, tenant_id=po.tenant_id, actor=ACTOR, action="po.send_reconciled", object_type="purchase_order",
+                 object_id=po.id, after={"status": po.status, "job_status": message.status if message else None})
+
+
 def reconcile_stuck() -> int:
-    """
-    A queued order whose send job ended without a result (lease expired -> `unknown`,
-    or `dead`) would stay "Queued" forever. In capture mode the capture and the job
-    result commit together, so no captured message means nothing was captured:
-    the order becomes failed with an explicit "outcome unknown" entry for the owner.
-    (A live transport will need a provider status lookup here instead — CP7.)
-    """
+    """A queued order whose send job ended without a result (lease expired → `unknown`, or `dead`) must not stay Queued."""
     fixed = 0
     with transaction() as session:
         stuck = session.execute(
@@ -123,16 +145,7 @@ def reconcile_stuck() -> int:
             .where(PurchaseOrder.status == "queued", OutboxMessage.status.in_(("unknown", "dead")))
             .with_for_update(of=PurchaseOrder, skip_locked=True)).all()
         for po, message in stuck:
-            captured = session.scalars(select(CapturedMessage.id).where(
-                CapturedMessage.po_id == po.id, CapturedMessage.revision == po.current_revision)).first()
-            po.status = "test_sent" if captured else "failed"
-            session.add(PoSendAttempt(tenant_id=po.tenant_id, po_id=po.id, revision=po.current_revision, mode=supplier_contact.send_mode(),
-                                      outcome="captured" if captured else "unknown", outbox_message_id=message.id,
-                                      detail="The sender stopped before reporting a result. " + (
-                                          "A capture was recorded." if captured else
-                                          "No capture was recorded, so nothing was sent; refresh and approve again.")))
-            audit.record(session, tenant_id=po.tenant_id, actor=ACTOR, action="po.send_reconciled", object_type="purchase_order",
-                         object_id=po.id, after={"status": po.status, "job_status": message.status})
+            _outcome_lost(session, po, message, po.current_revision, "The sender stopped before reporting a result.")
             fixed += 1
     return fixed
 
@@ -140,7 +153,12 @@ def reconcile_stuck() -> int:
 def run_once(*, limit: int = 10, lease: timedelta = timedelta(minutes=5)) -> int:
     reconcile_stuck()
     with transaction() as session:
-        claimed = [(m.id, m.lease_token) for m in outbox.claim_batch(session, limit=limit, lease=lease, topics=(purchasing.SEND_TOPIC,))]
+        messages = outbox.claim_batch(session, limit=limit, lease=lease, topics=(purchasing.SEND_TOPIC,))
+        for m in messages:
+            # Committed before any hand-off: if the worker dies, the outcome is judged by the transport
+            # it was sent with, not by whatever mode the process restarts in.
+            m.payload = {**m.payload, "send_mode": m.payload.get("send_mode") or supplier_contact.send_mode()}
+        claimed = [(m.id, m.lease_token) for m in messages]
     for message_id, token in claimed:
         try:
             with transaction() as session:
@@ -157,11 +175,11 @@ def run_once(*, limit: int = 10, lease: timedelta = timedelta(minutes=5)) -> int
                 except outbox.LeaseLost:
                     continue
                 message = session.get(outbox.OutboxMessage, message_id)
-                po = purchasing.get_po(session, tenant_id=message.tenant_id, po_id=uuid.UUID(message.payload["po_id"]))
-                po.status = "failed"
-                session.add(PoSendAttempt(tenant_id=po.tenant_id, po_id=po.id, revision=message.payload["revision"],
-                                          mode=supplier_contact.send_mode(), outcome="failed", outbox_message_id=message_id,
-                                          detail=f"{type(exc).__name__}: outcome unknown — check before resending"))
+                po = purchasing.get_po(session, tenant_id=message.tenant_id, po_id=uuid.UUID(message.payload["po_id"]),
+                                       for_update=True)
+                if po.status == "queued" and po.current_revision == message.payload["revision"]:
+                    _outcome_lost(session, po, message, message.payload["revision"],
+                                  f"The send raised {type(exc).__name__}: {exc}.")
     return len(claimed)
 
 

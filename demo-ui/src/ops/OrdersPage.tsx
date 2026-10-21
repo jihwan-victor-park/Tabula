@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { cn } from '../components/ui';
 import { api, loadSession, type Me, type PoDetail, type PoLine, type PoSummary } from './api';
+import { AfterSending } from './AfterSending';
 import { Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, StatusChip, money, num, when } from './kit';
 
 export function OrdersPage() {
@@ -21,13 +22,14 @@ export function OrdersPage() {
           {pos.data?.length === 0 && <EmptyState icon="receipt_long" title="No purchase orders yet" body="Create drafts from the plan on the Today page."><Link className="text-[#E8654A] underline" to="/ops/today">Go to Today</Link></EmptyState>}
           <div className="overflow-x-auto">
             <table className="[&_td]:pr-3 [&_th]:pr-3 w-full min-w-[720px] text-[13px]">
-              <thead><tr className="text-left text-[#5C7A8A]"><th className="py-2">Number</th><th>Supplier</th><th>Ship to</th><th>Status</th><th className="text-right">Lines</th><th className="text-right">Items total</th><th>Updated</th></tr></thead>
+              <thead><tr className="text-left text-[#5C7A8A]"><th className="py-2">Number</th><th>Supplier</th><th>Ship to</th><th>Status</th><th>Supplier</th><th className="text-right">Lines</th><th className="text-right">Items total</th><th>Updated</th></tr></thead>
               <tbody>
                 {pos.data?.map((p) => (
                   <tr key={p.id} className="border-t border-[#F1E4DA]">
                     <td className="py-2"><Link className="font-medium text-[#E8654A] underline" to={`/ops/orders/${p.id}`}>{p.number}</Link></td>
                     <td>{p.supplier}</td><td>{p.ship_to}</td>
                     <td><StatusChip status={p.status} />{p.needs_attention && <span className="ml-2 text-[12px] text-[#8A5A00]">notes</span>}</td>
+                    <td className="text-[12px]">{p.sent_at ? (p.awaiting_reply ? <span className="text-[#8A5A00]">awaiting answer</span> : p.ack_status.replace('_', ' ')) : '—'}{p.open_issues ? <span className="ml-1 text-[#991B1B]">· {p.open_issues} issue(s)</span> : ''}</td>
                     <td className="text-right font-mono">{p.lines}</td>
                     <td className="text-right font-mono">{money(p.estimated_total, p.currency)}</td>
                     <td>{when(p.updated_at)}</td>
@@ -82,8 +84,8 @@ export function OrderPage() {
             <>
               <div className="flex flex-wrap items-center gap-3">
                 <StatusChip status={p.status} />
-                <span className="text-[12px] text-[#5C7A8A]">Revision {p.revision} · digest {p.digest.slice(0, 12)}…</span>
-                {p.status === 'test_sent' && <span className="text-[12px] font-medium text-[#065F46]">Captured in Tabula only — the supplier has not received or accepted this order.</span>}
+                <span className="text-[12px] text-[#5C7A8A]">Revision {p.revision} · digest {p.digest.slice(0, 12)}… · this order's numbers checked at data v{p.data.checked_version} (its own check — the store plan on Today is separate)</span>
+                {p.captured_message && <span className="text-[12px] font-medium text-[#1D4ED8]">Captured in Tabula only (capture mode) — no supplier received this order. Supplier answers below are what you recorded.</span>}
               </div>
               {[save, submit, approve, refreshTerms, cancel].map((m, i) => <ErrorBox key={i} error={m.error} />)}
               {p.status === 'failed' && (
@@ -183,6 +185,8 @@ export function OrderPage() {
                   {p.status === 'awaiting_approval' && role && role !== 'owner' && <span className="text-[12px] text-[#5C7A8A]">Waiting for the owner to approve.</span>}
                 </div>
               </Panel>
+
+              {p.progress && <AfterSending po={p} role={role} onChange={refresh} />}
 
               {p.captured_message && (
                 <Panel title="Test send result (captured, not delivered)">

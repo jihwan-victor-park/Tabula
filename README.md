@@ -23,7 +23,7 @@ In dev auth mode send `X-Dev-User: you@example.com`; every tenant-scoped call al
 scripts/dev.sh --seed     # migrates, seeds "Paws & Co (demo)", starts API :8080, 3 workers, UI :5173
 ```
 
-Open http://127.0.0.1:5173/ops/setup and sign in as `owner@pawsandco.example` (or `manager@pawsandco.example`, who can draft but not approve). The seed prints the sample files to import (`var/demo/*.csv`) and the dates to declare. Sending runs in **capture** mode: an approved order is stored in Tabula as a test message and is never delivered. `scripts/ui_walkthrough.py` drives the whole flow in a browser and saves screenshots to `docs/screenshots/cp6/` (expects a freshly seeded workspace; `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome).
+Open http://127.0.0.1:5173/ops/setup and sign in as `owner@pawsandco.example` (or `manager@pawsandco.example`, who can draft but not approve). The seed prints the sample files to import (`var/demo/*.csv`) and the dates to declare. Sending runs in **capture** mode: an approved order is stored in Tabula as a test message and is never delivered. Supplier answers are entered by a person (paste, .txt/.eml/.csv upload, or a labelled mock reply in capture mode) and applied only after review; deliveries are recorded on Receiving. `scripts/ui_walkthrough.py` drives the whole flow (imports → plan → PO → approval → capture → partial acceptance → plan → partial receipt with damage → worker restart → other workspace) and saves screenshots to `docs/screenshots/cp7/` (expects a freshly seeded workspace; `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome).
 
 Tabula is a multi-agent commerce intelligence platform for small business operators. It has two interconnected subsystems:
 

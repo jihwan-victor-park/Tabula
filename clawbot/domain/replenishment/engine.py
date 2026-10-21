@@ -29,7 +29,9 @@ from typing import Any
 
 from clawbot.domain.units import QTY_SCALE, order_quantity_for
 
-ENGINE_VERSION = "repl-2"
+ENGINE_VERSION = "repl-3"
+# Explanations that need no decision from the owner.
+INFO_REASONS = frozenset({"covered_by_open_orders"})
 ZERO = Decimal(0)
 
 
@@ -148,7 +150,7 @@ class ItemResult:
 
     @property
     def needs_review(self) -> bool:
-        return bool(self.reasons)
+        return any(r["code"] not in INFO_REASONS for r in self.reasons)
 
     def reason(self, code: str, message: str, **data: Any) -> None:
         self.reasons.append({"code": code, "message": message, **{k: _json(v) for k, v in data.items()}})
@@ -355,8 +357,11 @@ def recommend(item: ItemInputs, policy: Policy) -> ItemResult:
                    + ", ".join(f"{o['supplier']} ({len(o['stockouts'])} stockout days, "
                                f"{_json(o['unit_cost'])} {o['offer'].currency}/unit)" for o in options))
     if item.inbound:
-        r.step("Confirmed inbound arriving in the plan window", best["relevant_qty"])
-        r.step("Ordered, not counted as arriving", held_qty)
+        r.step("Confirmed inbound arriving in the plan window", best["relevant_qty"],
+               "; ".join(f"{i.reference}: {_json(i.quantity)} at the end of day {i.arrival_day}"
+                         for i in arriving if i.arrival_day <= best["horizon"]) or None)
+        r.step("Ordered, not counted as arriving", held_qty,
+               "; ".join(f"{i.reference}: {_json(i.quantity)}" for i in held) or None)
     for line in best["beyond"]:
         r.reason("confirmed_inbound_after_window",
                  f"{line.reference} arrives after this plan's window (day {line.arrival_day}); "
@@ -388,6 +393,12 @@ def recommend(item: ItemInputs, policy: Policy) -> ItemResult:
                  f"Needs {_json(best['need_before_held'])} more, but {_json(held_qty)} already ordered is not confirmed "
                  "or not arriving on schedule — confirm those orders with the supplier before reordering",
                  need_before_held=best["need_before_held"], held=held_qty)
+    elif r.status == "no_order" and best["need"] == 0 and best["target"] > on_hand and (best["relevant_qty"] > 0 or held):
+        # Not "enough stock": stock alone is short, orders already placed make up the difference.
+        refs = sorted({i.reference for i in arriving if i.arrival_day <= best["horizon"]} | {i.reference for i in held})
+        r.reason("covered_by_open_orders",
+                 f"Stock alone is {_json(best['target'] - on_hand)} short of target; covered by orders already "
+                 f"placed ({', '.join(refs)})", references=refs, short_by=best["target"] - on_hand)
 
     # --- projection and stockout reasons
     if demand is not None:

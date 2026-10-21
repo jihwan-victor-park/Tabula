@@ -31,6 +31,17 @@ class SendDecision:
     delivers: bool = False  # True only if something would actually leave the machine
 
 
+def outcome_verifiable(mode: str) -> bool:
+    """
+    Can Tabula prove from its own database whether a send it lost track of happened?
+    Only for capture: the captured message and the job result commit in one
+    transaction, so "no captured message" means nothing was sent. Any transport
+    that hands the message to someone else (email, supplier API) cannot: a worker
+    that dies after the hand-off leaves the outcome unknown — it may have arrived.
+    """
+    return mode == "capture"
+
+
 def send_mode() -> SendMode:
     mode = os.getenv("TABULA_SUPPLIER_SEND_MODE", "disabled")
     if mode not in ("disabled", "capture", "test_only", "live"):

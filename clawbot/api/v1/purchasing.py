@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clawbot.api.deps import DbSession, TenantContext, get_tenant_context, require_permission
+from clawbot.api.v1 import fulfilment
 from clawbot.domain import data_version, purchasing
 from clawbot.persistence.models import (
     AuditEvent, CapturedMessage, Membership, OutboxMessage, PoApproval, PoRevision, PoSendAttempt, PurchaseOrder, User,
@@ -54,9 +55,23 @@ def _summary(session: Session, po: PurchaseOrder) -> dict[str, Any]:
         "id": str(po.id), "number": po.number, "status": po.status, "revision": po.current_revision,
         "supplier": content["supplier"]["name"], "ship_to": content["ship_to"]["name"], "currency": po.currency,
         "lines": len(content["lines"]), "estimated_total": content["totals"]["estimated_total"],
-        "needs_attention": bool(content["blockers"] or content["notices"]),
+        "needs_attention": bool(content["blockers"] or content["notices"]), "ack_status": po.ack_status,
+        "sent_at": po.sent_at.isoformat() if po.sent_at else None, **_line_totals(session, po),
         "created_at": po.created_at.isoformat(), "updated_at": po.updated_at.isoformat(),
     }
+
+
+def _line_totals(session: Session, po: PurchaseOrder) -> dict[str, Any]:
+    """For lists: is anything still unconfirmed / expected, and are there open issues."""
+    from clawbot.domain import po_progress
+
+    rows = po_progress.lines(session, po)
+    if not rows:
+        return {"awaiting_reply": False, "expected_lines": 0, "open_issues": 0}
+    states = [po_progress.state(l) for l in rows]
+    return {"awaiting_reply": any(s.unconfirmed > 0 for s in states),
+            "expected_lines": sum(1 for s in states if s.unconfirmed > 0 or s.outstanding > 0),
+            "open_issues": po_progress.open_issues(session, po)}
 
 
 def _detail(session: Session, po: PurchaseOrder) -> dict[str, Any]:
@@ -97,6 +112,7 @@ def _detail(session: Session, po: PurchaseOrder) -> dict[str, Any]:
         "revisions": [{"revision": r.revision, "reason": r.reason, "at": r.created_at.isoformat(),
                        "by": names.get(r.created_by_user_id) or r.created_by_kind,
                        "total": r.content["totals"]["estimated_total"]} for r in revisions],
+        "progress": fulfilment.progress(session, po),
         "history": [{"action": e.action, "by": names.get(e.actor_user_id) or e.actor_name or e.actor_kind,
                      "at": e.created_at.isoformat(), "reason": e.reason, "after": e.after} for e in events],
     }
