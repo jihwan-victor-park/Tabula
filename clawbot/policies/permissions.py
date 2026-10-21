@@ -76,6 +76,10 @@ _PERMISSIONS: dict[str, tuple[frozenset[str], bool, bool]] = {
     "replenishment.run": (frozenset({"owner", "manager"}), False, True),
     "replenishment.policy": (frozenset({"owner", "manager"}), False, False),
     "connectors.manage": (frozenset({"owner", "manager"}), False, False),
+    # Purchase orders: managers prepare, only the owner approves (spec 9); the send worker is a system.
+    "po.draft": (frozenset({"owner", "manager"}), False, False),
+    "po.approve": (frozenset({"owner"}), False, False),
+    "po.send": (frozenset(), False, True),
     "connectors.sync": (frozenset({"owner", "manager"}), False, True),
 }
 

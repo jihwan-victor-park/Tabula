@@ -5,7 +5,8 @@ Every outbound message to a supplier must pass `check_send()`. Conversational
 agents never call it — only the PO send service does. In this development
 phase `live` mode is refused outright, so nothing can reach a real supplier.
 
-  TABULA_SUPPLIER_SEND_MODE = disabled (default) | test_only | live
+  TABULA_SUPPLIER_SEND_MODE = disabled (default) | capture | test_only | live
+      capture   — the message is stored in Tabula (captured_messages) and delivered to no one
   TABULA_TEST_RECIPIENTS    = comma-separated addresses allowed in test_only
 """
 
@@ -17,7 +18,7 @@ from typing import Literal
 
 from clawbot.domain.errors import PermissionDenied
 
-SendMode = Literal["disabled", "test_only", "live"]
+SendMode = Literal["disabled", "capture", "test_only", "live"]
 MOCK_RECIPIENT = "mock-supplier@tabula.test"
 _TEST_DOMAINS = ("example.com", "example.org", "example.net")
 
@@ -27,11 +28,12 @@ class SendDecision:
     mode: SendMode
     recipient: str
     is_test: bool
+    delivers: bool = False  # True only if something would actually leave the machine
 
 
 def send_mode() -> SendMode:
     mode = os.getenv("TABULA_SUPPLIER_SEND_MODE", "disabled")
-    if mode not in ("disabled", "test_only", "live"):
+    if mode not in ("disabled", "capture", "test_only", "live"):
         raise PermissionDenied(f"Unknown TABULA_SUPPLIER_SEND_MODE: {mode!r}")
     return mode  # type: ignore[return-value]
 
@@ -53,8 +55,10 @@ def check_send(recipient: str) -> SendDecision:
     mode = send_mode()
     if mode == "disabled":
         raise PermissionDenied("Supplier sending is disabled (TABULA_SUPPLIER_SEND_MODE=disabled)")
+    if mode == "capture":
+        return SendDecision(mode, recipient, True, delivers=False)  # kept in Tabula, sent to no one
     if is_test_recipient(recipient):
-        return SendDecision(mode, recipient, True)
+        return SendDecision(mode, recipient, True, delivers=True)
     if mode == "test_only":
         raise PermissionDenied(f"{recipient} is not an allowed test recipient in test_only mode")
     # live: real suppliers. Refused until CP7 (verified recipient, owner approval of the

@@ -43,11 +43,26 @@ class LocationCreate(BaseModel):
     )
 
 
+class LocationAddress(BaseModel):
+    address_line1: str | None = Field(default=None, max_length=200)
+    address_line2: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=100)
+    region: str | None = Field(default=None, max_length=100)
+    postal_code: str | None = Field(default=None, max_length=20)
+    country: str | None = Field(default=None, min_length=2, max_length=2, description="ISO country code, e.g. US")
+
+
 class LocationOut(_Orm):
     id: uuid.UUID
     name: str
     timezone: str
     inventory_write_owner: str
+    address_line1: str | None
+    address_line2: str | None
+    city: str | None
+    region: str | None
+    postal_code: str | None
+    country: str | None
     created_at: datetime
 
 

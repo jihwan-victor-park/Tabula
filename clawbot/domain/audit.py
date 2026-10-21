@@ -8,6 +8,13 @@ from sqlalchemy.orm import Session
 from clawbot.persistence.models import AuditEvent
 from clawbot.policies.permissions import Actor
 
+# Changes to these can change what replenishment recommends, so they move the
+# tenant data version (clawbot/domain/data_version.py).
+PLANNING_INPUT_TYPES = frozenset({
+    "inventory_movement", "variant", "external_item_mapping", "supplier", "supplier_contact", "supplier_item",
+    "location", "replenishment_policy", "external_open_order_line",
+})
+
 
 def record(
     session: Session,
@@ -35,4 +42,8 @@ def record(
     )
     session.add(event)
     session.flush()
+    if object_type in PLANNING_INPUT_TYPES:
+        from clawbot.domain import data_version
+
+        data_version.bump(session, tenant_id)
     return event

@@ -57,6 +57,7 @@ IMPORT_KINDS = ("supplier_price_list", "inventory", "sales", "open_orders")
 # uploaded → (mapping edited) → confirmed → applying → applied | failed; rejected = discarded by a person
 IMPORT_STATUSES = ("uploaded", "confirmed", "applying", "applied", "failed", "rejected")
 IMPORT_ROW_STATUSES = ("pending", "applied", "unchanged", "error", "skipped")
+ImportStatusPending = ("confirmed", "applying")
 SALES_LINE_TYPES = ("sale", "refund")
 # Origin systems a sales line can come from. Fixed so that "square" and
 # "square-export" can never be two names for one origin (spec 6.3).
@@ -162,6 +163,13 @@ class Location(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant_fk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Ship-to address for purchase orders.
+    address_line1: Mapped[str | None] = mapped_column(String(200))
+    address_line2: Mapped[str | None] = mapped_column(String(200))
+    city: Mapped[str | None] = mapped_column(String(100))
+    region: Mapped[str | None] = mapped_column(String(100))
+    postal_code: Mapped[str | None] = mapped_column(String(20))
+    country: Mapped[str | None] = mapped_column(String(2))
     # When a POS owns stock counts, Tabula never writes its own movements here;
     # it reads the POS and posts receipts through the connector instead.
     inventory_write_owner: Mapped[str] = mapped_column(
@@ -529,6 +537,9 @@ class InventoryMovement(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # For counts: the absolute level the count established. Stock is anchored on this,
+    # so changes that happened before the count (even if entered later) are never applied twice.
+    counted_qty: Mapped[Decimal | None] = mapped_column(QTY)
     recorded_at: Mapped[datetime] = _created_at()
 
 
@@ -775,7 +786,7 @@ class ExternalOpenOrderLine(Base):
 
     __tablename__ = "external_open_order_lines"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "supplier_id", "external_po_number", "variant_id"),
+        UniqueConstraint("tenant_id", "supplier_id", "location_id", "external_po_number", "variant_id"),
         ForeignKeyConstraint(["tenant_id", "supplier_id"], ["suppliers.tenant_id", "suppliers.id"]),
         ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
         ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
@@ -808,7 +819,9 @@ class ExternalOpenOrderLine(Base):
 # ---------------------------------------------------------------------------
 
 REPLENISHMENT_RUN_STATUSES = ("current", "superseded", "historical")
-REPLENISHMENT_LINE_STATUSES = ("order", "no_order", "no_supplier", "insufficient_data", "excluded")
+# on_hold: stock is needed, but already-ordered quantity that is not reliably arriving
+# (unconfirmed / overdue / no ETA) covers it — reordering waits for that order to be checked.
+REPLENISHMENT_LINE_STATUSES = ("order", "on_hold", "no_order", "no_supplier", "insufficient_data", "excluded")
 
 
 class ReplenishmentPolicy(Base):
@@ -882,6 +895,7 @@ class ReplenishmentRun(Base):
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     actor_name: Mapped[str | None] = mapped_column(String(80))
     policy: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    data_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # tenant data version the plan read
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     plan_notes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = _created_at()
@@ -920,7 +934,7 @@ class ReplenishmentLine(Base):
 
 CONNECTOR_PROVIDERS = ("square",)
 CONNECTOR_ENVIRONMENTS = ("mock", "sandbox", "production")
-CONNECTOR_STATUSES = ("active", "revoked", "error")
+CONNECTOR_STATUSES = ("active", "needs_reauth", "revoked", "error")
 
 
 class ConnectorAccount(Base):
@@ -933,7 +947,9 @@ class ConnectorAccount(Base):
     __tablename__ = "connector_accounts"
     __table_args__ = (
         UniqueConstraint("tenant_id", "id"),
-        UniqueConstraint("provider", "environment", "external_merchant_id"),
+        # One live connection per provider account; a revoked one does not block reconnecting elsewhere.
+        Index("uq_connector_accounts_live_merchant", "provider", "environment", "external_merchant_id", unique=True,
+              postgresql_where=text("status <> 'revoked'")),
         CheckConstraint(_in("provider", CONNECTOR_PROVIDERS), name="provider_valid"),
         CheckConstraint(_in("environment", CONNECTOR_ENVIRONMENTS), name="environment_valid"),
         CheckConstraint(_in("status", CONNECTOR_STATUSES), name="status_valid"),
@@ -986,6 +1002,146 @@ class OAuthState(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     provider: Mapped[str] = mapped_column(String(20), nullable=False)
     environment: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Hash of a random value set as an HttpOnly cookie in the browser that started the flow:
+    # the callback must come from that same browser (a forwarded link cannot connect another account).
+    browser_binding_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+
+class TenantDataVersion(Base):
+    """See clawbot/domain/data_version.py."""
+
+    __tablename__ = "tenant_data_versions"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class TenantCounter(Base):
+    """Human-readable sequences per tenant (e.g. PO numbers)."""
+
+    __tablename__ = "tenant_counters"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    name: Mapped[str] = mapped_column(String(40), primary_key=True)
+    value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# ---------------------------------------------------------------------------
+# Purchase orders (CP6)
+# ---------------------------------------------------------------------------
+
+# draft → awaiting_approval → (owner approves: approval + send job in one transaction) → queued
+# → test_sent (captured, never delivered to a supplier) | failed. Editing goes back to draft.
+PO_STATUSES = ("draft", "awaiting_approval", "queued", "test_sent", "failed", "cancelled")
+PO_OPEN_STATUSES = ("draft", "awaiting_approval", "queued")
+# Not sent and not cancelled: can still be refreshed, edited, re-approved or cancelled.
+PO_ACTIVE_STATUSES = (*PO_OPEN_STATUSES, "failed")
+
+
+class PurchaseOrder(Base):
+    __tablename__ = "purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "number"),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        ForeignKeyConstraint(["tenant_id", "supplier_id"], ["suppliers.tenant_id", "suppliers.id"]),
+        CheckConstraint(_in("status", PO_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    number: Mapped[str] = mapped_column(String(40), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    current_revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    data_version: Mapped[int] = mapped_column(Integer, nullable=False)  # inputs the quantities were checked against
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class PoRevision(Base):
+    """Immutable content of one PO version: supplier, recipient, ship-to, lines, totals. Approval binds to its digest."""
+
+    __tablename__ = "po_revisions"
+    __table_args__ = (
+        UniqueConstraint("po_id", "revision"),
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(300))
+    created_by_kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class PoApproval(Base):
+    __tablename__ = "po_approvals"
+    __table_args__ = (
+        UniqueConstraint("po_id", "revision"),
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    approved_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    approved_role: Mapped[str] = mapped_column(String(20), nullable=False)
+    data_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    approved_at: Mapped[datetime] = _created_at()
+
+
+class PoSendAttempt(Base):
+    """Execution log of every send attempt (spec 16.7)."""
+
+    __tablename__ = "po_send_attempts"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "po_id"], ["purchase_orders.tenant_id", "purchase_orders.id"], ondelete="CASCADE"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    recipient: Mapped[str | None] = mapped_column(String(320))
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # captured | refused | blocked | failed | skipped | unknown
+    detail: Mapped[str | None] = mapped_column(Text)
+    outbox_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class CapturedMessage(Base):
+    """A message the capture transport kept instead of delivering (nothing leaves the machine)."""
+
+    __tablename__ = "captured_messages"
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    po_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    revision: Mapped[int | None] = mapped_column(Integer)
+    to_address: Mapped[str] = mapped_column(String(320), nullable=False)
+    subject: Mapped[str] = mapped_column(String(300), nullable=False)
+    body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    attachment_name: Mapped[str | None] = mapped_column(String(200))
+    attachment_csv: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()

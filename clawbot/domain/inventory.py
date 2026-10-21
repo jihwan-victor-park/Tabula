@@ -22,11 +22,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import distinct_on, insert
 from sqlalchemy.orm import Session
 
-from clawbot.domain import audit, catalog, tenancy
+from clawbot.domain import audit, catalog, data_version, tenancy
 from clawbot.domain.errors import IdempotencyConflict, StateConflict, ValidationFailed
 from clawbot.domain.units import QTY_SCALE
 from clawbot.persistence.models import MOVEMENT_REASONS, InventoryMovement, InventoryPosition, InventorySnapshot
@@ -131,6 +131,11 @@ def record_movement(
         .returning(InventoryPosition)
         .execution_options(populate_existing=True)
     ).scalar_one()
+    if reason == "count":
+        # A count states the level after this correction; keep it as the stock anchor.
+        session.execute(
+            update(InventoryMovement).where(InventoryMovement.id == movement_id).values(counted_qty=position.on_hand)
+        )
 
     audit.record(
         session,
@@ -247,6 +252,8 @@ def record_snapshot(
             InventorySnapshot.variant_id == variant_id,
         )
     ).one()
+    if inserted is not None:
+        data_version.bump(session, tenant_id)
     return snapshot, inserted is not None
 
 

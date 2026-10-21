@@ -22,7 +22,7 @@ from clawbot.schemas.catalog import (
     VariantOut,
     VariantUpdate,
 )
-from clawbot.schemas.core import LocationCreate, LocationOut
+from clawbot.schemas.core import LocationAddress, LocationCreate, LocationOut
 from clawbot.schemas.suppliers import OfferOut
 
 router = APIRouter(tags=["catalog"])
@@ -48,6 +48,14 @@ def post_location(
     body: LocationCreate, session: Session = DbSession, ctx: TenantContext = Depends(_can_edit_locations)
 ) -> LocationOut:
     location = tenancy.create_location(session, tenant_id=ctx.tenant_id, actor=ctx.actor, **body.model_dump())
+    return LocationOut.model_validate(location)
+
+
+@router.put("/locations/{location_id}/address", response_model=LocationOut)
+def put_location_address(location_id: uuid.UUID, body: LocationAddress, session: Session = DbSession,
+                         ctx: TenantContext = Depends(_can_edit_locations)) -> LocationOut:
+    location = tenancy.set_location_address(session, tenant_id=ctx.tenant_id, actor=ctx.actor,
+                                            location_id=location_id, address=body.model_dump())
     return LocationOut.model_validate(location)
 
 

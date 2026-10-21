@@ -17,6 +17,7 @@
 - **허용된 테스트 주소**로 전송: `TABULA_TEST_RECIPIENTS`(쉼표 구분)에 등록한 주소와 `@example.com`, `@example.org`, `@example.net`, `@*.test`만 허용된다.
 - 전송 모드 `TABULA_SUPPLIER_SEND_MODE`:
   - `disabled`: 아무것도 보내지 않는다(기본값).
+  - `capture`: 메시지를 Tabula 안(`captured_messages`)에만 저장한다. 아무에게도 전달되지 않으며, 화면에는 "Test sent (captured)"로 표시하고 공급업체 접수로 표시하지 않는다. 로컬 개발 기본값으로 쓴다.
   - `test_only`: mock과 테스트 주소에만 보낸다.
   - `live`: 아래 3절. **현재 코드에서는 거부된다.**
 

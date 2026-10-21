@@ -14,7 +14,16 @@ TABULA_AUTH_MODE=dev .venv/bin/uvicorn clawbot.api.app:app --reload   # docs at 
 
 Layout: `clawbot/api/app.py` (single app) · `clawbot/api/v1/` (routers) · `clawbot/domain/` (tenant-scoped services: inventory ledger, outbox, audit, connector events) · `clawbot/persistence/` (SQLAlchemy models + Alembic migrations).
 
-In dev auth mode send `X-Dev-User: you@example.com`; every tenant-scoped call also needs `X-Tenant-Id`, which the server checks against your membership. Stock changes require an `Idempotency-Key` header.
+In dev auth mode send `X-Dev-User: you@example.com`; every tenant-scoped call also needs `X-Tenant-Id`, which the server checks against your membership. Stock changes require an `Idempotency-Key` header. Dev auth is accepted only with `TABULA_ENV=development|test` and only from loopback clients without `X-Forwarded-For`.
+
+### Browser flow (imports → plan → PO drafts → approve → captured test send)
+
+```bash
+(cd demo-ui && npm install)
+scripts/dev.sh --seed     # migrates, seeds "Paws & Co (demo)", starts API :8080, 3 workers, UI :5173
+```
+
+Open http://127.0.0.1:5173/ops/setup and sign in as `owner@pawsandco.example` (or `manager@pawsandco.example`, who can draft but not approve). The seed prints the sample files to import (`var/demo/*.csv`) and the dates to declare. Sending runs in **capture** mode: an approved order is stored in Tabula as a test message and is never delivered. `scripts/ui_walkthrough.py` drives the whole flow in a browser and saves screenshots to `docs/screenshots/cp6/` (expects a freshly seeded workspace; `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome).
 
 Tabula is a multi-agent commerce intelligence platform for small business operators. It has two interconnected subsystems:
 

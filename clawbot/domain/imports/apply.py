@@ -253,10 +253,13 @@ def apply_import(session: Session, *, tenant_id: uuid.UUID, import_id: uuid.UUID
         return imp
     everything.commit()
 
-    if imp.kind == "open_orders" and ctx.settings.complete_list:
-        # A complete report closes each listed supplier's older open lines it no longer shows —
-        # except for suppliers with rows that failed, where "missing" might only mean "unreadable".
+    if imp.kind == "open_orders" and ctx.settings.complete_scope in ("suppliers_in_file", "all_suppliers"):
+        # A complete report closes older open lines it no longer shows for every supplier in its
+        # declared scope — except suppliers with rows that failed ("missing" may mean "unreadable").
         by_supplier: dict[uuid.UUID, set[tuple[str, uuid.UUID]]] = defaultdict(set)
+        if ctx.settings.complete_scope == "all_suppliers":
+            for supplier in ctx.suppliers_by_name.values():
+                by_supplier[supplier.id]  # every supplier is in scope, even with no rows
         failed_suppliers = {r.values.get("supplier_id") for r in ev.rows if statuses.get(r.row_number, ("",))[0] == "error"}
         for r in valid:
             by_supplier[r.values["supplier_id"]].add((r.values["po_number"], r.values["variant_id"]))
@@ -271,20 +274,14 @@ def apply_import(session: Session, *, tenant_id: uuid.UUID, import_id: uuid.UUID
             )
         imp.summary = {**imp.summary, "closed_missing_lines": closed}
 
-    if imp.kind == "sales":
-        # The file's date span is declared complete for this origin at this location:
-        # days in it without a row are zero-sales days, not missing data.
-        from zoneinfo import ZoneInfo
-
-        tz = ZoneInfo(ctx.timezone)
-        days = [r.values["sold_at"].astimezone(tz).date() for r in valid
-                if statuses.get(r.row_number, ("",))[0] in ("applied", "unchanged")]
-        if days:
-            sales.record_coverage(
-                session, tenant_id=tenant_id, actor=actor, location_id=uuid.UUID(imp.context["location_id"]),
-                source_system=imp.context["source_system"], source_ref=f"import:{imp.id}",
-                starts_on=min(days), ends_on=max(days),
-            )
+    if imp.kind == "sales" and not any(st[0] == "error" for st in statuses.values()):
+        # The person declared the export period; with every row recorded, days in it
+        # without a row are zero-sales days. (With row errors the period stays uncovered.)
+        sales.record_coverage(
+            session, tenant_id=tenant_id, actor=actor, location_id=uuid.UUID(imp.context["location_id"]),
+            source_system=imp.context["source_system"], source_ref=f"import:{imp.id}",
+            starts_on=ctx.settings.period_start, ends_on=ctx.settings.period_end,
+        )
 
     mark_rows(session, imp, statuses)
     counts: dict[str, int] = defaultdict(int)

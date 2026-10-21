@@ -978,7 +978,7 @@ def record_price(
             "unit_price": str(unit_price), "currency": currency, "price_type": price_type,
             "valid_from": valid_from.isoformat(), "source_ref": source_ref,
         },
-    )
+    )  # object_type supplier_item → bumps the data version
     return price
 
 

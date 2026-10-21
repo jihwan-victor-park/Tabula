@@ -9,6 +9,16 @@
 - 상태: `[ ]` 미착수 · `[~]` 진행 중 · `[x]` gate 통과
 - 외부 의존성(앱 심사, 공급업체 협조, 결제 provider 승인)은 `⏳ 외부`로 표시하고 코드 일정과 분리한다.
 - 데모/샘플 데이터는 항상 `demo` 배지로 실제 데이터와 분리한다.
+- 검증 수준은 네 단계로 따로 적는다: **구현 완료** (코드·테스트) · **mock 검증** (mock provider / capture 전송) · **Sandbox 실호출 검증** · **실제 고객 검증**. 앞 단계가 끝났다고 뒤 단계를 완료로 쓰지 않는다.
+
+## 사용자 조치 체크리스트 (코드로 끝낼 수 없음 — 제공사에서 폐기 확인 전에는 완료 표시 금지)
+
+- [ ] U1 OpenClaw gateway 토큰 폐기·재발급 (`docs/SECURITY.md` 3절 순서: 새 값 발급 → 실행 중 서비스 교체 → 옛 값 폐기)
+- [ ] U2 기기 identity 키(Ed25519) 재생성, 옛 기기 등록 해제
+- [ ] U3 operator 토큰 폐기·재발급
+- [ ] U4 노출된 세션 기록·개인 전화번호 영향 확인
+- [ ] U5 Git 이력 재작성·force push 여부 결정 (지금은 **하지 않음**, `docs/SECURITY.md` 4절)
+- [ ] U6 Square Developer 계정 + Sandbox 앱 등록, 환경변수 설정 (`docs/SQUARE_SETUP.md`) → CP4 Sandbox 실호출 검증
 
 진행 순서 요약
 
@@ -149,7 +159,10 @@ CP3에서 미룬 것 (담당 CP)
 - "1,500"은 미국 기본값대로 천 단위로 읽음(다른 locale 지원 시 재검토) → CP14
 
 
-## [~] CP4 — 첫 POS 커넥터 (Square) `[CON-01] [CON-02]` — Sandbox 코드 완료, ⏳ Sandbox 실호출 검증은 사용자 계정 등록 후
+## [~] CP4 — 첫 POS 커넥터 (Square) `[CON-01] [CON-02]` — 구현 완료 · mock 검증 · ⏳ Sandbox 실호출 미검증(U6) · 실제 고객 미검증
+
+**운영 전 필수 (지금은 CSV import + mock으로 진행):** 4.2b token refresh, 4.6 변경분 polling·야간 대조 스케줄, 4.8a CSV↔Square 주문 key 인계 규칙(같은 위치의 판매 출처를 하나로 정하는 규칙 포함), 환불 주문(refund order) 모델링. 이 넷이 끝나기 전에는 Square를 실제 매장의 판매 출처로 켜지 않는다.
+
 
 Sandbox 개발과 App Marketplace 등재 심사는 별개다(`docs/SQUARE_SETUP.md`). 심사를 기다리지 않는다.
 
@@ -169,7 +182,7 @@ Gate: 실제 계정 표본의 거래·재고·환불이 원본과 일치(**Sandb
 
 ---
 
-## [~] CP5 — 보충 엔진 (결정적 계산) `[PLAN-01]` — 구현·리뷰 1회 반영, 재검증 대기
+## [~] CP5 — 보충 엔진 (결정적 계산) `[PLAN-01]` — 구현 완료 · 독립 리뷰 2회 반영 · 합성 데이터로만 검증 · 5.7 backtest와 실제 고객 데이터 미검증
 
 - [x] 5.1 일별 SKU 수요(위치 local 날짜), **coverage 기록으로 "판매 없음"과 "데이터 없음" 구분**, 0재고 snapshot 날은 평균에서 제외
 - [x] 5.2 이동평균 + 요일 패턴(4주 이상) + merchant min/max, 간헐 수요는 긴 구간 + 검토 표시
@@ -186,27 +199,36 @@ Gate: 실제 계정 표본의 거래·재고·환불이 원본과 일치(**Sandb
 - [x] 5.12 미입고 주문 파일: 기준 시각·완전 목록 여부 명시 필수, 오래된 보고는 덮어쓰기 불가, 완전 목록에서 빠진 줄 닫음
 - [x] 5.13 실사 사이 재고 = 마지막 실사 + 이후 다른 이동 − 이후 판매(환불은 되돌리지 않음), snapshot 우선순위 POS > 수동
 
-Gate: 명세 7.3 예시(5상자, 품절 1일) 통과(엔진 단독 + import 경유). boundary: 납기 0일, 기한 지난 ETA, 계획 기간 밖 입고, 판매 데이터 공백, 실사 후 파손, 과거 시점 run, 공급업체 선택 — 테스트 통과. scheduler·수동 동시 실행 → 현재 계획 1개. **독립 리뷰 2차(재검증)는 리뷰 agent 사용 한도로 중단 — 재개 필요.**
+Gate: 명세 7.3 예시(5상자, 품절 1일) 통과(엔진 단독 + import 경유). boundary: 납기 0일, 기한 지난 ETA, 계획 기간 밖 입고, 판매 데이터 공백, 실사 후 파손, 과거 시점 run, 공급업체 선택 — 테스트 통과. scheduler·수동 동시 실행 → 현재 계획 1개. 독립 리뷰 2차 반영: 미확인 열린 주문 때문에 0이 된 줄은 `on_hold`(원래 필요량·미확인 수량·보류를 따로 표시), 주문일·배송일(그날 영업 종료)·판매 가능일을 줄마다 명시 + lead 4 → 5일째 판매 가능 경계 테스트, 상자당 단가·가격 출처 표시, 판매 기간은 import에서 선언한 기간만 coverage로 인정(출처별), 실사 기준 재고는 `counted_qty`로.
 
-남은 한계(명시): 행이 기록된 transaction 시작 시각 기준이라 실행 직전에 시작해 직후 commit된 쓰기는 "새 데이터"로 표시되지 않을 수 있음 → CP11. 품절일 제외는 0재고 snapshot이 찍힌 날만 → 재고 이력 재구성은 CP5.x.
+남은 한계(명시): 시각 기준 `newer_data_since`는 보조 표시일 뿐이고, 판정 기준은 `tenant_data_versions`(입력 쓰기마다 같은 transaction에서 증가, 행 잠금으로 commit 순서대로 증가)다. 품절일 제외는 0재고 snapshot이 찍힌 날만 → 재고 이력 재구성은 CP5.x.
 
 ---
 
-## CP6 — PO·승인·예산 `[PO-01] [PO-02]`
+## [~] CP6 — PO·승인 (capture 전송) `[PO-01] [PO-02]` — 구현 완료 · mock(capture) 검증 · 독립 리뷰 1회 반영 · 실제 공급업체/고객 미검증
 
-- [ ] 6.1 `purchase_orders, po_lines, po_revisions` (메모리 dict인 `pending_orders.py` 대체)
-- [ ] 6.2 PO 상태 기계(명세 10): draft → awaiting_approval → approved → sending → sent → supplier_confirmed → partially_received → received → closed, cancel_requested/cancelled/exception
-- [ ] 6.3 line별 ordered/confirmed/received/rejected/cancelled/outstanding
-- [ ] 6.4 승인은 revision·금액·수취인·배송지·정책 version에 묶임, 변경 시 무효
-- [ ] 6.5 승인 + budget 예약 + outbox 기록을 한 트랜잭션으로
-- [ ] 6.6 `universal_agent.py`의 "confirmed" 반환을 실제 상태로 교체 (Approved ≠ Supplier accepted)
-- [ ] 6.8 PO line은 승인 시점의 supplier_item version, order_uom, units_per_order_uom, price ID, 통화를 스냅샷 → 이후 포장·가격 변경이 승인을 무효화 (CP2 리뷰 C4)
-- [ ] 6.9 일반 Idempotency-Key 저장소: POST purchase-orders/approve/send 등 재시도·더블클릭 중복 방지 (CP2 리뷰 C5)
+- [x] 6.1 `purchase_orders`, `po_revisions`(불변, 내용 sha256 digest), `po_approvals`(PO·revision당 1개), `po_send_attempts`, `captured_messages` (migration 0009). line은 revision 스냅샷 안에 있음 — line별 확인·입고 수량 테이블은 CP7/CP8
+- [~] 6.2 상태: draft → awaiting_approval → queued → test_sent / failed, cancelled. 명세의 sent·supplier_confirmed·partially_received·received·closed·cancel_requested는 CP7/CP8에서
+- [ ] 6.3 line별 confirmed/received/rejected/cancelled/outstanding → CP7/CP8
+- [x] 6.4 승인은 revision + digest(수량·단가·가격 ID·포장·supplier item version·수취인·배송지·합계·당시 추천)에 묶임. 수정·새로고침 = 새 revision → draft → 다시 승인. 정책 version 묶기는 계획 run을 통해 간접적(추천 스냅샷) — 자동화 정책 version은 CP13
+- [~] 6.5 승인 기록 + 상태 + outbox job + audit를 한 transaction으로 (budget 예약은 budget 기능과 함께 CP13)
+- [ ] 6.6 legacy `universal_agent.py`의 "confirmed" 반환 교체 → CP6.10과 함께
+- [x] 6.7 API: `GET /v1/purchase-orders[/{id}]`, `POST …/from-run`, `PATCH …/{id}/lines`, `POST …/refresh|submit|approve|cancel`. 전송은 승인 시 outbox로 자동 예약(별도 `/send` 없음), `/cancel-request`는 CP7(보낸 뒤 취소는 공급업체 응답 필요)
+- [x] 6.8 line 스냅샷: supplier_item version, order_uom, units_per_order_uom, price ID·유형·출처·기준("30 USD per case of 12"), 통화. 이후 가격·포장 변경 → 승인 거부("refresh it")
+- [~] 6.9 중복 방지는 고유 키로: 승인 `(po, revision)`, 전송 `po:{id}:rev:{n}:send`, 초안 생성은 (tenant, 위치) advisory lock + 품목당 활성 PO 1개. 일반 Idempotency-Key 저장소는 아직 없음
 - [ ] 6.10 legacy procurement agent를 PO 도메인 + 확정 supplier_items로 전환 (CP2.8b)
-- [ ] 6.11 승인은 화면에 보인 내용의 digest에 묶음(수량·단가·포장·수취인·배송지) — CP3 import 확정과 같은 방식 (CP3 리뷰 C5)
-- [ ] 6.7 API: `POST /v1/purchase-orders`, `/approve`, `/send`, `/cancel-request`
+- [x] 6.11 승인 요청에 화면의 revision + digest를 보내야 함 → 다르면 409
+- [x] 6.12 owner만 승인: 권한 표(domain) + API 양쪽, manager 승인 403 (테스트 + 브라우저)
+- [x] 6.13 데이터 신선도: 승인 시 `tenant_data_versions`를 share lock으로 읽고(진행 중 쓰기 commit까지 대기), PO 숫자를 만든 version과 다르면 계획 재계산 → 추천이 움직였으면 409. 진행 중 import·실행 중 sync가 있으면 승인 대기(재시도 대기 중 job은 막지 않음). **전송 직전에도 다시 확인**(조건·수취인·공급업체 상태·추천) → 다르면 failed + 이유, 새로고침 후 재승인. 새로고침은 추천을 다시 계산해 "주문 5 / 추천 7"을 보여주고 사람이 결정
+- [x] 6.14 전송 결과 불명(worker 중단·lease 만료) → PO가 Queued로 남지 않음: capture가 기록됐으면 test_sent, 아니면 failed("outcome unknown, nothing was sent")
+- [x] 6.15 브라우저 흐름 (`demo-ui/src/ops/*`, TanStack Query, 실제 `/v1` + Postgres): import 검토·확정 → 계획(보류·날짜·근거) → 공급업체별 초안 → 수량 수정 → 제출 → owner 승인 → capture 결과·실행 기록. 새로고침 후 상태 유지, loading/empty/error 상태. 화면 캡처 `docs/screenshots/cp6/`, 재현 스크립트 `scripts/ui_walkthrough.py`
 
-Gate: 서버 재시작 뒤 승인 상태 유지. 두 사람이 동시에 승인해도 outbox 전송 작업 1건. 승인 뒤 단가가 바뀌면 재승인 필요.
+Gate: 서버 재시작 뒤 승인 상태 유지(DB가 기준) ✓. 두 사람 동시 승인 → 승인 1·outbox 1 ✓(테스트). 승인 뒤 단가 변경 → 재승인 필요 ✓. 승인 뒤 입력 변경으로 추천이 움직이면 전송 차단 ✓. **실제 공급업체 전송은 이 빌드에서 거부**(`live` 모드 refused, transport 없음) — 실제 발송은 CP7에서 수신 확인 페이지·결과 불명 처리와 함께.
+
+남은 한계(명시):
+- 계획은 Tabula의 활성 PO를 입고 예정으로 세지 않는다(같은 품목 재초안은 막지만, test_sent 뒤에는 다시 전량 추천). 보낸·확인된 PO를 입고 예정으로 넣는 것은 CP7.
+- 승인 성공 시 재계산된 run이 그 위치의 현재 계획이 된다(계산 주체 "approval-check"로 표시).
+- 동시 초안 테스트는 경쟁 조건 기반이라 lock을 빼도 매번 실패하지는 않는다(3회 중 2회 실패 확인).
 
 ---
 
@@ -254,7 +276,7 @@ Gate: 같은 invoice가 이메일과 업로드로 두 번 들어와도 1건. 실
 
 ## CP10 — Owner 화면 `[UI-01]` (CP5부터 각 CP와 함께)
 
-- [ ] 10.1 TanStack Query 도입, `data.ts`의 output JSON import 제거 → live API, demo fixtures는 별도 모드
+- [~] 10.1 TanStack Query 도입, `data.ts`의 output JSON import 제거 → live API, demo fixtures는 별도 모드 — `/ops/*` 화면(Today·Imports·Orders·Workspace)은 live API로 완료(CP6), legacy 화면은 그대로
 - [ ] 10.2 메뉴: Today / Inventory / Orders / Suppliers / Bills / Connections, Settings
 - [ ] 10.3 `ActionChip`(이벤트 없는 span) → loading/disabled/success/error 버튼, 발주·지급은 낙관적 성공 표시 금지
 - [ ] 10.4 Today: 오늘 결정할 주문, 미확인 supplier, 늦은 입고, invoice 차이, stale/연결 끊김/budget 초과

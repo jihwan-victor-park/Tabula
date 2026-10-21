@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from clawbot.domain import catalog, tenancy
+from clawbot.domain import catalog, data_version, tenancy
 from clawbot.domain.errors import ValidationFailed
 from clawbot.domain.units import QTY_SCALE, validate_currency
 from clawbot.persistence.models import SALES_KEY_SCHEMES, SALES_SOURCES, SalesCoverage, SalesLine
@@ -97,6 +97,7 @@ def record_sales_line(
         )
     ).one()
     if inserted is not None:
+        data_version.bump(session, tenant_id)
         return RecordedLine(line, "created")
     same = (line.variant_id, line.quantity, line.line_type, line.sold_at) == (variant_id, quantity, line_type, sold_at)
     return RecordedLine(line, "unchanged" if same else "conflict")
@@ -133,22 +134,35 @@ def record_coverage(
                 source_ref=source_ref, starts_on=starts_on, ends_on=ends_on)
         .on_conflict_do_nothing(index_elements=["tenant_id", "location_id", "source_system", "source_ref"])
     )
+    data_version.bump(session, tenant_id)
 
 
 def covered_dates(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, start: date, end: date) -> set[date] | None:
-    """Covered local dates in [start, end], or None if this location has no coverage records at all."""
+    """
+    Covered local dates in [start, end], or None if the location has no coverage records.
+
+    Every origin that reports sales here is expected from its first covered day
+    onwards (an origin never silently stops). A date counts as covered only if
+    every origin expected on that date reported it — so one origin's export can
+    never make another origin's missing days look like zero sales.
+    """
     from datetime import timedelta
 
-    rows = list(session.execute(
-        select(SalesCoverage.starts_on, SalesCoverage.ends_on).where(
-            SalesCoverage.tenant_id == tenant_id, SalesCoverage.location_id == location_id)
-    ))
-    if not rows:
+    by_origin: dict[str, list[tuple[date, date]]] = {}
+    for origin, a, b in session.execute(
+        select(SalesCoverage.source_system, SalesCoverage.starts_on, SalesCoverage.ends_on)
+        .where(SalesCoverage.tenant_id == tenant_id, SalesCoverage.location_id == location_id)
+        .order_by(SalesCoverage.source_system, SalesCoverage.starts_on)
+    ):
+        by_origin.setdefault(origin, []).append((a, b))
+    if not by_origin:
         return None
+    first = {origin: min(a for a, _ in ranges) for origin, ranges in by_origin.items()}
     days: set[date] = set()
-    for a, b in rows:
-        day = max(a, start)
-        while day <= min(b, end):
+    day = start
+    while day <= end:
+        expected = [o for o, f in first.items() if f <= day]
+        if expected and all(any(a <= day <= b for a, b in by_origin[o]) for o in expected):
             days.add(day)
-            day += timedelta(days=1)
+        day += timedelta(days=1)
     return days

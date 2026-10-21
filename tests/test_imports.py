@@ -39,16 +39,36 @@ def store(client):
     return api
 
 
+def _period_of(content: bytes) -> tuple[str, str] | None:
+    """Test helper: declare a sales file's period as the span of its own dates (a person would state it)."""
+    from datetime import date as _date
+
+    days = []
+    for row in list(csv.reader(io.StringIO(content.decode("utf-8-sig"))))[1:]:
+        cell = row[0][:10] if row else ""
+        for parse in (lambda c: _date.fromisoformat(c), lambda c: datetime.strptime(c, "%m/%d/%Y").date()):
+            try:
+                days.append(parse(cell))
+                break
+            except ValueError:
+                continue
+    return (min(days).isoformat(), max(days).isoformat()) if days else None
+
+
 def _upload(store, kind, content, name="file.csv", **form):
     data = {"kind": kind, **{k: str(val) for k, val in form.items()}}
-    return store.client.post("/v1/imports", data=data, files={"file": (name, content, "text/csv")},
+    resp = store.client.post("/v1/imports", data=data, files={"file": (name, content, "text/csv")},
                              headers=store.headers())
+    if kind == "sales" and resp.status_code == 201 and (period := _period_of(content)):
+        _mapping(store, resp.json(), period_start=period[0], period_end=period[1])
+    return resp
 
 
 def _mapping(store, imp, columns=None, **settings):
     current = store.get(f"/v1/imports/{imp['id']}").json()
+    merged = {**current["mapping"].get("settings", {}), **settings}
     body = {"revision": current["mapping_revision"], "columns": columns or current["mapping"]["columns"],
-            "settings": settings}
+            "settings": merged}
     resp = store.client.put(f"/v1/imports/{imp['id']}/mapping", json=body, headers=store.headers())
     assert resp.status_code == 200, resp.text
     return resp.json()
@@ -68,7 +88,7 @@ def _apply(store, imp, accept_row_errors=False, expect="applied"):
     assert resp.status_code == 202, resp.text
     assert import_worker.run_once() >= 1
     done = store.get(f"/v1/imports/{imp['id']}").json()
-    assert done["status"] == expect, done
+    assert done["status"] == expect, f"{done['status']}: {done['failure']} {done['summary']}"
     return done
 
 
@@ -359,8 +379,8 @@ def test_open_orders_convert_cases_via_confirmed_supplier_item(store):
     rows = [["Supplier", "PO #", "SKU", "Qty Remaining", "ETA", "Confirmed"],
             ["Phillips Pet", "PO-77", "LITTER-20", "2", "2026-10-24", "yes"]]
     imp = _upload(store, "open_orders", _csv(rows), location_id=store.location_id).json()
-    assert _preview(store, imp)["blocking_issues"] == ["declare_quantity_unit", "declare_as_of", "declare_complete_list"]
-    _mapping(store, imp, quantity_unit="order_unit", as_of=datetime.now(timezone.utc).isoformat(), complete_list=False)
+    assert _preview(store, imp)["blocking_issues"] == ["declare_quantity_unit", "declare_as_of", "declare_complete_scope"]
+    _mapping(store, imp, quantity_unit="order_unit", as_of=datetime.now(timezone.utc).isoformat(), complete_scope="none")
     (row,) = _preview(store, imp)["rows"]
     assert "no pack for this item" in row["errors"][0]["message"]  # mapping not confirmed yet
 
@@ -390,12 +410,14 @@ def test_agent_drafts_mapping_but_only_a_person_confirms(store):
 
     imp = _sales_upload(store, SALES).json()
     tenant = uuid.UUID(store.tenant_id)
+    current = store.get(f"/v1/imports/{imp['id']}").json()
     with transaction() as s:
         service.update_mapping(s, tenant_id=tenant, actor=agent("onboarding-agent"), import_id=uuid.UUID(imp["id"]),
-                               expected_revision=1, columns=imp["mapping"]["columns"], settings={})
+                               expected_revision=current["mapping_revision"], columns=current["mapping"]["columns"],
+                               settings=current["mapping"]["settings"])
     with pytest.raises(PermissionDenied), transaction() as s:
         service.confirm(s, tenant_id=tenant, actor=agent("onboarding-agent"), import_id=uuid.UUID(imp["id"]),
-                        expected_revision=2, accept_row_errors=False)
+                        expected_revision=current["mapping_revision"] + 1, accept_row_errors=False)
     actions = [(e["action"], e["actor_kind"]) for e in store.get("/v1/audit-events", params={"object_type": "import"}).json()]
     assert ("import.mapping_updated", "agent") in actions
 

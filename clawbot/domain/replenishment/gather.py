@@ -69,24 +69,30 @@ def _local_midnight(day: date, tz: ZoneInfo) -> datetime:
 
 
 def _ledger_readings(session: Session, tenant_id, location_id, cutoff: datetime) -> dict[uuid.UUID, _Reading]:
+    """
+    Anchor on the latest count's absolute level (counted_qty). A count already
+    reflects everything that happened before it, so only movements that happened
+    after the count's time are added — whenever they were entered.
+    """
     moves = defaultdict(list)
-    for vid, delta, reason, at in session.execute(
-        select(InventoryMovement.variant_id, InventoryMovement.delta, InventoryMovement.reason, InventoryMovement.occurred_at)
+    for vid, delta, reason, at, counted, recorded in session.execute(
+        select(InventoryMovement.variant_id, InventoryMovement.delta, InventoryMovement.reason,
+               InventoryMovement.occurred_at, InventoryMovement.counted_qty, InventoryMovement.recorded_at)
         .where(InventoryMovement.tenant_id == tenant_id, InventoryMovement.location_id == location_id,
                InventoryMovement.occurred_at <= cutoff)
-        .order_by(InventoryMovement.variant_id, InventoryMovement.occurred_at, InventoryMovement.id)
+        .order_by(InventoryMovement.variant_id, InventoryMovement.occurred_at, InventoryMovement.recorded_at,
+                  InventoryMovement.id)
     ):
-        moves[vid].append((delta, reason, at))
+        moves[vid].append((delta, reason, at, counted))
     readings = {}
     for vid, rows in moves.items():
-        counts = [at for _, reason, at in rows if reason == "count"]
+        counts = [(at, counted) for _, reason, at, counted in rows if reason == "count" and counted is not None]
         if counts:
-            anchor = counts[-1]
-            level = sum((d for d, _, at in rows if at <= anchor), ZERO)
-            after = sum((d for d, _, at in rows if at > anchor), ZERO)
+            anchor, level = counts[-1]
+            after = sum((d for d, reason, at, _ in rows if at > anchor and reason != "count"), ZERO)
             readings[vid] = _Reading(level + after, anchor, "Tabula ledger (last count)", True, after)
         else:
-            readings[vid] = _Reading(sum((d for d, _, _ in rows), ZERO), rows[-1][2], "Tabula ledger (never counted)", False)
+            readings[vid] = _Reading(sum((d for d, _, _, _ in rows), ZERO), rows[-1][2], "Tabula ledger (never counted)", False)
     return readings
 
 
@@ -230,7 +236,10 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
                 order_uom=o.supplier_item.order_uom, units_per_order_uom=o.supplier_item.units_per_order_uom,
                 order_multiple=o.supplier_item.order_multiple, min_order_qty=o.supplier_item.min_order_qty,
                 unit_price=o.price.unit_price, currency=o.price.currency, price_as_of=o.price.valid_from.isoformat(),
-                arrival_day=arrival.arrival_day, calendar_notes=arrival.notes,
+                arrival_day=arrival.arrival_day, calendar_notes=arrival.notes, price_id=str(o.price.id),
+                price_type=o.price.price_type, price_source=o.price.source_ref,
+                order_date=arrival.order_date.isoformat(), delivery_date=arrival.delivery_date.isoformat(),
+                usable_date=arrival.usable_date.isoformat(),
             ))
             terms[str(s.id)] = SupplierTerms(str(s.id), s.name, s.currency, s.min_order_amount, s.free_shipping_threshold)
         if not offer_inputs and not blockers:

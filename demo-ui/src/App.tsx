@@ -7,6 +7,10 @@ import { OrdersPage } from './pages/OrdersPage';
 import { PriceScoutPage } from './pages/PriceScoutPage';
 import { SalesHistoryPage } from './pages/SalesHistoryPage';
 import { TrendsPage } from './pages/TrendsPage';
+import { ImportsPage } from './ops/ImportsPage';
+import { OrderPage, OrdersPage as PurchaseOrdersPage } from './ops/OrdersPage';
+import { SetupPage } from './ops/SetupPage';
+import { TodayPage } from './ops/TodayPage';
 
 const SimulationPage = lazy(() => import('./simulation/SimulationPage'));
 
@@ -14,7 +18,13 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to="/ops/today" replace />} />
+      <Route path="/ops" element={<Navigate to="/ops/today" replace />} />
+      <Route path="/ops/today" element={<TodayPage />} />
+      <Route path="/ops/imports" element={<ImportsPage />} />
+      <Route path="/ops/orders" element={<PurchaseOrdersPage />} />
+      <Route path="/ops/orders/:id" element={<OrderPage />} />
+      <Route path="/ops/setup" element={<SetupPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/agents" element={<AgentsPage />} />
       <Route

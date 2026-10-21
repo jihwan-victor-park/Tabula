@@ -21,7 +21,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from clawbot.domain import audit, catalog, suppliers, tenancy
+from clawbot.domain import audit, catalog, data_version, suppliers, tenancy
 from clawbot.domain.errors import ValidationFailed
 from clawbot.domain.units import QTY_SCALE
 from clawbot.persistence.models import ExternalOpenOrderLine
@@ -65,6 +65,7 @@ def upsert_open_order_line(
         .where(
             ExternalOpenOrderLine.tenant_id == tenant_id,
             ExternalOpenOrderLine.supplier_id == supplier_id,
+            ExternalOpenOrderLine.location_id == location_id,
             ExternalOpenOrderLine.external_po_number == external_po_number,
             ExternalOpenOrderLine.variant_id == variant_id,
         )
@@ -83,6 +84,7 @@ def upsert_open_order_line(
         )
         session.add(line)
         session.flush()
+        data_version.bump(session, tenant_id)
         return UpsertedLine(line, "created")
     reopened = line.closed_at is not None
     if all(getattr(line, k) == val for k, val in fields.items()) and not reopened:
@@ -96,6 +98,7 @@ def upsert_open_order_line(
         line.reported_at = reported_at
     line.updated_at = datetime.now(timezone.utc)
     session.flush()
+    data_version.bump(session, tenant_id)
     return UpsertedLine(line, "updated")
 
 

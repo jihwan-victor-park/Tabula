@@ -75,8 +75,10 @@ def test_confirmed_inbound_reduces_the_order_and_the_risk():
 
 def test_unconfirmed_order_prevents_a_duplicate_order_but_not_the_risk():
     r = recommend(item(inbound=(InboundLine("PO-80 (Phillips Pet)", D(60), False, 4),)), POLICY)
-    assert (r.position, r.need, r.order_qty, r.status) == (D(78), D(0), D(0), "no_order")
-    assert codes(r) == ["unconfirmed_open_order", "stockout_risk_unconfirmed"]
+    assert (r.position, r.need, r.order_qty, r.status) == (D(78), D(0), D(0), "on_hold")
+    # Not "enough stock": 60 is still needed, the 60 already requested is unconfirmed, reorder waits.
+    assert (r.need_before_held, r.held_qty) == (D(60), D(60))
+    assert codes(r) == ["unconfirmed_open_order", "reorder_on_hold", "stockout_risk_unconfirmed"]
     assert r.stockout_days  # not counted as arriving
 
 
@@ -244,3 +246,25 @@ def test_r_old_unconfirmed_orders_are_flagged():
 def test_r_never_counted_and_inferred_coverage_are_flagged():
     r = recommend(item(stock_counted=False, coverage_inferred=True), POLICY)
     assert {"stock_not_counted", "coverage_inferred"} <= set(codes(r))
+
+
+
+def test_lead_four_days_dates_end_to_end():
+    """Ordered Wed Oct 21 before the 14:00 cutoff, lead 4: delivered Sat Oct 24, on the shelf from Sun Oct 25 (day 5)."""
+    cal = SupplierCalendar(NY, time(14, 0), (), ())
+    a = arrival_for_order_now(now=at("2026-10-21T10:00"), store_timezone=NY, cal=cal, lead_time_days=4)
+    assert (a.order_date, a.delivery_date, a.usable_date, a.arrival_day) == (
+        date(2026, 10, 21), date(2026, 10, 24), date(2026, 10, 25), 4)
+    r = recommend(item(offers=(offer(arrival_day=a.arrival_day, order_date="2026-10-21", delivery_date="2026-10-24",
+                                     usable_date="2026-10-25", price_type="price_list", price_source="Oct list"),)), POLICY)
+    rows = {p["date"]: p for p in r.projection}
+    assert rows["2026-10-23"]["start"] == "6" and rows["2026-10-23"]["short"] == "0"
+    assert rows["2026-10-24"]["start"] == "0" and rows["2026-10-24"]["short"] == "6" and rows["2026-10-24"]["arriving"] == "60"
+    assert rows["2026-10-25"]["start"] == "60"
+    assert r.stockout_days == [4]
+    assert "ordered 2026-10-21, delivered 2026-10-24, on the shelf from the start of 2026-10-25" in step(r, "Order arrives (usable from)")["formula"]
+    assert "30 USD per case of 12 (price_list, Oct list" in step(r, "Line cost")["formula"]
+
+    late = arrival_for_order_now(now=at("2026-10-21T15:00"), store_timezone=NY, cal=cal, lead_time_days=4)
+    assert (late.order_date, late.usable_date, late.arrival_day) == (date(2026, 10, 22), date(2026, 10, 26), 5)
+    assert recommend(item(offers=(offer(arrival_day=late.arrival_day),)), POLICY).stockout_days == [4, 5]

@@ -75,6 +75,11 @@ class SquareClient:
                 return
 
     def completed_orders(self, location_ids: list[str], start: datetime, end: datetime) -> Iterator[dict[str, Any]]:
+        # Orders search accepts at most 10 location IDs per request.
+        for i in range(0, len(location_ids), 10):
+            yield from self._completed_orders(location_ids[i:i + 10], start, end)
+
+    def _completed_orders(self, location_ids: list[str], start: datetime, end: datetime) -> Iterator[dict[str, Any]]:
         cursor = None
         while True:
             body: dict[str, Any] = {

@@ -53,20 +53,29 @@ def get_connectors(session: Session = DbSession, ctx: TenantContext = Depends(ge
     return [_account_view(session, a) for a in square.list_accounts(session, tenant_id=ctx.tenant_id)]
 
 
+OAUTH_COOKIE = "tabula_square_oauth"
+
+
 @router.post("/connectors/square/authorize")
-def post_authorize(session: Session = DbSession,
+def post_authorize(response: Response, request: Request, session: Session = DbSession,
                    ctx: TenantContext = Depends(require_permission("connectors.manage"))) -> dict[str, str]:
-    """Start OAuth: open `authorize_url` in the browser. Square redirects back to the callback."""
-    return {"authorize_url": square.start_authorization(session, tenant_id=ctx.tenant_id, actor=ctx.actor)}
+    """
+    Start OAuth: open `authorize_url` in this browser. An HttpOnly cookie binds the
+    flow to this browser, so a forwarded link cannot connect someone else's account.
+    """
+    url, binding = square.start_authorization(session, tenant_id=ctx.tenant_id, actor=ctx.actor)
+    response.set_cookie(OAUTH_COOKIE, binding, max_age=600, httponly=True, samesite="lax",
+                        secure=request.url.scheme == "https", path="/v1/connectors/square")
+    return {"authorize_url": url}
 
 
 @router.get("/connectors/square/callback")
-def get_callback(state: str, code: str | None = None, error: str | None = None,
+def get_callback(request: Request, state: str, code: str | None = None, error: str | None = None,
                  session: Session = DbSession) -> dict[str, Any]:
-    """OAuth redirect target. Authenticated by the single-use `state`, not by a bearer token."""
+    """OAuth redirect target. Authenticated by the single-use `state` plus the starting browser's cookie."""
     # Consume the state first, in its own transaction: whatever happens next, it cannot be replayed.
     with transaction() as consume:
-        claim = square.consume_state(consume, state=state)
+        claim = square.consume_state(consume, state=state, browser_binding=request.cookies.get(OAUTH_COOKIE))
     if error or not code:
         raise ValidationFailed(f"Square authorization was not completed ({error or 'no code'})")
     account = square.complete_authorization(session, claim=claim, code=code)
@@ -100,9 +109,9 @@ def post_sync(account_id: uuid.UUID, body: SyncBody, session: Session = DbSessio
         if start >= end:
             raise ValidationFailed("start must be before end")
         payload.update(start=start.isoformat(), end=end.isoformat())
-        key = f"square:{account_id}:sales:{payload['start']}:{payload['end']}"
-    else:
-        key = f"square:{account_id}:{body.kind}:{uuid.uuid4()}"
+    # Every request is its own run (re-syncing a window after mapping items must really run);
+    # the sync itself is idempotent, so repeats never duplicate data.
+    key = f"square:{account_id}:{body.kind}:{uuid.uuid4()}"
     message = outbox.enqueue(session, tenant_id=ctx.tenant_id, topic="square.sync", operation_key=key,
                              payload=payload, retry_safe=True)
     return {"job_id": str(message.id), "status": message.status}

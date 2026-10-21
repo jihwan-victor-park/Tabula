@@ -341,10 +341,13 @@ def test_r2_declared_settings_compare_by_meaning(store):
     ok = _confirm_import(store, inv, declared={"as_of": same_instant, "timezone": "America/Chicago"})
     assert ok.status_code == 202, ok.text  # omitted false/null defaults are fine
     sales_imp = _sales_upload(store, SALES).json()
-    assert _confirm_import(store, sales_imp, declared={}).status_code == 202
+    period = {"period_start": "2026-10-01", "period_end": "2026-10-03"}
+    assert _confirm_import(store, sales_imp, declared={}).status_code == 422  # the period must be restated
+    assert _confirm_import(store, sales_imp, declared=period).status_code == 202
     other = _sales_upload(store, SALES[:2], name="x.csv").json()
     _mapping(store, other, timezone="Asia/Seoul")
-    assert _confirm_import(store, other, declared={}).status_code == 422  # an agent-set timezone must be restated
+    other_period = {"period_start": "2026-10-01", "period_end": "2026-10-01"}
+    assert _confirm_import(store, other, declared=other_period).status_code == 422  # an agent-set timezone must be restated
 
 
 def test_r2_ordinals_count_rows_with_errors_too(store):

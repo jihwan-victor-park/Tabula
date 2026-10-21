@@ -57,7 +57,10 @@ def _load_offer(offer: dict[str, Any]) -> OfferInputs:
         units_per_order_uom=Decimal(offer["units_per_order_uom"]), order_multiple=Decimal(offer["order_multiple"]),
         min_order_qty=Decimal(offer["min_order_qty"]), unit_price=Decimal(offer["unit_price"]),
         currency=offer["currency"], price_as_of=offer["price_as_of"], arrival_day=offer["arrival_day"],
-        calendar_notes=tuple(offer["calendar_notes"]),
+        calendar_notes=tuple(offer["calendar_notes"]), price_id=offer.get("price_id"),
+        price_type=offer.get("price_type"), price_source=offer.get("price_source"),
+        order_date=offer.get("order_date"), delivery_date=offer.get("delivery_date"),
+        usable_date=offer.get("usable_date"),
     )
 
 

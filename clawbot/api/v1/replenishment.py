@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from clawbot.api.deps import DbSession, TenantContext, get_tenant_context, require_permission
+from clawbot.domain import purchasing
 from clawbot.domain.replenishment import codec, service
 from clawbot.persistence.models import ReplenishmentLine, ReplenishmentRun, Supplier, Variant
 
@@ -34,7 +35,7 @@ class RunRequest(BaseModel):
     as_of: AwareDatetime | None = Field(default=None, description="Plan as of this moment (default: now)")
 
 
-def _line_view(line: ReplenishmentLine, sku: str, supplier: str | None) -> dict[str, Any]:
+def _line_view(line: ReplenishmentLine, sku: str, supplier: str | None, open_po: str | None = None) -> dict[str, Any]:
     inputs = line.inputs
     chosen = next((o for o in inputs["offers"] if o["supplier_item_id"] == str(line.supplier_item_id)), None)
     return {
@@ -43,6 +44,10 @@ def _line_view(line: ReplenishmentLine, sku: str, supplier: str | None) -> dict[
         "line_cost": None if line.line_cost is None else codec.dumps(line.line_cost), "currency": line.currency,
         "supplier_id": str(line.supplier_id) if line.supplier_id else None, "supplier": supplier,
         "supplier_item_id": str(line.supplier_item_id) if line.supplier_item_id else None,
+        "on_hand": inputs["on_hand"], "open_po": open_po,
+        "arrival": None if chosen is None else {"order_date": chosen.get("order_date"),
+                                                "delivery_date": chosen.get("delivery_date"),
+                                                "usable_date": chosen.get("usable_date")},
         "data_as_of": {"stock": inputs["stock_as_of"], "stock_source": inputs["stock_source"],
                        "sales_through": inputs["sales_through"],
                        "price": chosen["price_as_of"] if chosen else None},
@@ -54,8 +59,10 @@ def _run_view(session: Session, run: ReplenishmentRun) -> dict[str, Any]:
     lines = service.run_lines(session, run)
     skus = dict(session.execute(select(Variant.id, Variant.sku).where(Variant.tenant_id == run.tenant_id)).all())
     names = dict(session.execute(select(Supplier.id, Supplier.name).where(Supplier.tenant_id == run.tenant_id)).all())
-    order = {"order": 0, "no_supplier": 1, "insufficient_data": 2, "no_order": 3, "excluded": 4}
+    order = {"order": 0, "on_hold": 1, "no_supplier": 2, "insufficient_data": 3, "no_order": 4, "excluded": 5}
     lines.sort(key=lambda l: (order[l.status], not l.needs_review, skus.get(l.variant_id, "")))
+    # Items already on an active Tabula order (not yet sent) — the plan does not count these as inbound yet.
+    on_po = purchasing.open_po_numbers(session, tenant_id=run.tenant_id, location_id=run.location_id)
     return {
         "id": str(run.id), "location_id": str(run.location_id), "status": run.status,
         "cutoff": run.cutoff.isoformat(), "planning_date": run.planning_date.isoformat(),
@@ -63,8 +70,9 @@ def _run_view(session: Session, run: ReplenishmentRun) -> dict[str, Any]:
         "engine_version": run.engine_version, "input_digest": run.input_digest, "policy": run.policy,
         "computed_by": {"kind": run.actor_kind, "user_id": str(run.actor_user_id) if run.actor_user_id else None,
                         "name": run.actor_name},
-        "summary": run.summary, "plan_notes": run.plan_notes,
-        "lines": [_line_view(l, skus.get(l.variant_id, "?"), names.get(l.supplier_id)) for l in lines],
+        "summary": run.summary, "plan_notes": run.plan_notes, "data_version": run.data_version,
+        "lines": [_line_view(l, skus.get(l.variant_id, "?"), names.get(l.supplier_id), on_po.get(l.variant_id))
+                  for l in lines],
     }
 
 
@@ -113,8 +121,15 @@ def get_recommendations(location_id: uuid.UUID, session: Session = DbSession,
     run = service.current_run(session, tenant_id=ctx.tenant_id, location_id=location_id)
     if run is None:
         return {"location_id": str(location_id), "run": None, "stale": True, "stale_reasons": ["no_plan_yet"]}
+    from clawbot.domain import data_version
+
     newer = service.newer_data_since(session, run)
     age_hours = (datetime.now(timezone.utc) - run.cutoff).total_seconds() / 3600
     reasons = [f"newer_{n}" for n in newer] + (["older_than_24h"] if age_hours > 24 else [])
+    if data_version.current(session, ctx.tenant_id) != run.data_version and not newer:
+        reasons.append("inputs_changed")  # commit-ordered check: catches writes timestamps can miss
+    pending = data_version.pending_inputs(session, ctx.tenant_id)
+    if pending:
+        reasons.append("updates_in_progress")
     return {"location_id": str(location_id), "stale": bool(reasons), "stale_reasons": reasons,
-            "run": _run_view(session, run)}
+            "pending_updates": pending, "run": _run_view(session, run)}

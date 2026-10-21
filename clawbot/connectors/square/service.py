@@ -78,13 +78,21 @@ def _oauth_http(cfg: square_config.SquareConfig) -> httpx.Client:
 # ---------------------------------------------------------------------------
 
 
-def start_authorization(session: Session, *, tenant_id: uuid.UUID, actor: Actor) -> str:
-    """Return the Square consent URL. The state is random, single-use, and expires in 10 minutes."""
+def _sha(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+def start_authorization(session: Session, *, tenant_id: uuid.UUID, actor: Actor) -> tuple[str, str]:
+    """
+    Return (Square consent URL, browser binding). The caller sets the binding as an
+    HttpOnly cookie; the callback is accepted only from the browser holding it.
+    The state is random, single-use, and expires in 10 minutes.
+    """
     authorize(actor, "connectors.manage")
     cfg = square_config.load()
     cfg.require_oauth()
-    state = secrets.token_urlsafe(32)
-    session.add(OAuthState(state_hash=hashlib.sha256(state.encode()).hexdigest(), tenant_id=tenant_id,
+    state, binding = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+    session.add(OAuthState(state_hash=_sha(state), browser_binding_hash=_sha(binding), tenant_id=tenant_id,
                            user_id=actor.user_id, provider=PROVIDER, environment=cfg.environment,
                            expires_at=_now() + STATE_TTL))
     session.flush()
@@ -92,7 +100,7 @@ def start_authorization(session: Session, *, tenant_id: uuid.UUID, actor: Actor)
              "session": "false", "state": state}
     if cfg.redirect_url:
         query["redirect_uri"] = cfg.redirect_url
-    return f"{cfg.base_url}/oauth2/authorize?{urlencode(query)}"
+    return f"{cfg.base_url}/oauth2/authorize?{urlencode(query)}", binding
 
 
 @dataclass(frozen=True)
@@ -102,17 +110,19 @@ class StateClaim:
     environment: str
 
 
-def consume_state(session: Session, *, state: str) -> StateClaim:
+def consume_state(session: Session, *, state: str, browser_binding: str | None) -> StateClaim:
     """
     Mark the OAuth state used. Call this in its own committed transaction, before
     talking to Square, so a failed code exchange can never make the state reusable.
     """
     cfg = square_config.load()
-    row = session.get(OAuthState, hashlib.sha256(state.encode()).hexdigest(), with_for_update=True)
+    row = session.get(OAuthState, _sha(state), with_for_update=True)
     if row is None or row.used_at is not None or row.expires_at < _now() or row.environment != cfg.environment:
         raise PermissionDenied("This Square authorization link is invalid or expired; start again")
-    row.used_at = _now()
+    row.used_at = _now()  # consumed even if the browser check below fails
     session.flush()
+    if not browser_binding or not secrets.compare_digest(_sha(browser_binding), row.browser_binding_hash):
+        raise PermissionDenied("Finish connecting Square in the same browser that started it")
     return StateClaim(row.tenant_id, row.user_id, row.environment)
 
 
@@ -135,12 +145,14 @@ def complete_authorization(session: Session, *, claim: StateClaim, code: str) ->
     client = SquareClient(cfg, token["access_token"], transport=_transport_for(cfg.environment))
     try:
         merchant = client.merchant()
+    except SquareError as exc:
+        raise ValidationFailed(f"Square rejected the new connection ({exc.category})")
     finally:
         client.close()
 
     account = session.scalars(select(ConnectorAccount).where(
         ConnectorAccount.provider == PROVIDER, ConnectorAccount.environment == cfg.environment,
-        ConnectorAccount.external_merchant_id == merchant_id,
+        ConnectorAccount.external_merchant_id == merchant_id, ConnectorAccount.status != "revoked",
     ).with_for_update()).one_or_none()
     if account is not None and account.tenant_id != row.tenant_id:
         raise StateConflict("This Square account is already connected to another Tabula workspace")
@@ -176,6 +188,12 @@ def get_account(session: Session, *, tenant_id: uuid.UUID, account_id: uuid.UUID
 def list_accounts(session: Session, *, tenant_id: uuid.UUID) -> list[ConnectorAccount]:
     return list(session.scalars(select(ConnectorAccount).where(ConnectorAccount.tenant_id == tenant_id)
                                 .order_by(ConnectorAccount.created_at)))
+
+
+def mark_needs_reauth(session: Session, account: ConnectorAccount, why: str) -> None:
+    """Square refused our token (revoked or expired): stop syncing until someone reconnects."""
+    account.status, account.last_error, account.updated_at = "needs_reauth", why[:2000], _now()
+    session.flush()
 
 
 def client_for(account: ConnectorAccount) -> SquareClient:
@@ -271,6 +289,18 @@ def _variant_for(session: Session, account: ConnectorAccount, external_id: str |
                         source_account=account.external_merchant_id, external_id=external_id).variant_id
 
 
+def _ignored(session: Session, account: ConnectorAccount, external_id: str | None) -> bool:
+    """Custom-amount lines, and items a person marked 'not an inventory item' (rejected mapping)."""
+    if not external_id:
+        return True
+    from clawbot.persistence.models import ExternalItemMapping
+
+    return session.scalars(select(ExternalItemMapping.id).where(
+        ExternalItemMapping.tenant_id == account.tenant_id, ExternalItemMapping.source_system == PROVIDER,
+        ExternalItemMapping.source_account == account.external_merchant_id,
+        ExternalItemMapping.external_id == external_id, ExternalItemMapping.status == "rejected")).first() is not None
+
+
 def sync_catalog(session: Session, account: ConnectorAccount) -> SyncResult:
     """Propose mappings for Square variations that match a Tabula item by SKU or GTIN; report the rest."""
     authorize(SYNC_ACTOR, "connectors.sync")
@@ -314,7 +344,14 @@ def sync_sales(session: Session, account: ConnectorAccount, *, start: datetime, 
             _record_order(session, account, order, links, result)
     finally:
         client.close()
-    # Whole local days inside [start, end) are now known-complete for each linked location.
+    # Whole local days inside [start, end) are known-complete — but only if every line was recorded.
+    # Lines for items nobody has mapped yet (or lines that failed) leave the window uncovered, so
+    # their demand is never read as zero; re-sync the window once the items are mapped.
+    if result.counts.get("unmapped_item") or result.counts.get("error"):
+        state = dict(account.sync_state)
+        state["incomplete_windows"] = sorted(set(state.get("incomplete_windows", [])) | {f"{start.isoformat()}/{end.isoformat()}"})
+        account.sync_state = state
+        return result
     for location_id in links.values():
         location = tenancy.get_location(session, tenant_id=account.tenant_id, location_id=location_id)
         days = _whole_days(start, end, location.timezone)
@@ -323,7 +360,8 @@ def sync_sales(session: Session, account: ConnectorAccount, *, start: datetime, 
                                   source_system=PROVIDER, source_ref=f"square-sync:{start.isoformat()}/{end.isoformat()}",
                                   starts_on=days[0], ends_on=days[1])
     state = dict(account.sync_state)
-    state["sales_synced_through"] = max(state.get("sales_synced_through", ""), end.isoformat())
+    through = end.astimezone(timezone.utc).isoformat()  # one format so string order = time order
+    state["sales_synced_through"] = max(state.get("sales_synced_through", ""), through)
     account.sync_state = state
     return result
 
@@ -348,15 +386,26 @@ def _record_order(session: Session, account: ConnectorAccount, order: dict[str, 
     for line in normalize.sale_lines(order):
         variant_id = _variant_for(session, account, line.external_variant_id)
         if variant_id is None:
-            result.add("unmapped_item")
+            if _ignored(session, account, line.external_variant_id):
+                result.add("ignored_item")
+            else:
+                result.add("unmapped_item")
+                result.unmatched.append({"order_id": line.order_id, "external_id": line.external_variant_id})
             continue
-        recorded = sales.record_sales_line(
-            session, tenant_id=account.tenant_id, actor=SYNC_ACTOR, variant_id=variant_id, location_id=location_id,
-            source_system=PROVIDER, external_order_id=line.order_id, external_line_key=line.line_key,
-            key_scheme="provider_line", sold_at=line.sold_at, quantity=line.quantity, line_type=line.line_type,
-            unit_price=line.unit_price, currency=line.currency,
-        )
-        result.add(recorded.outcome)  # created | unchanged | conflict | other_path (already imported by CSV)
+        savepoint = session.begin_nested()
+        try:
+            recorded = sales.record_sales_line(
+                session, tenant_id=account.tenant_id, actor=SYNC_ACTOR, variant_id=variant_id, location_id=location_id,
+                source_system=PROVIDER, external_order_id=line.order_id, external_line_key=line.line_key,
+                key_scheme="provider_line", sold_at=line.sold_at, quantity=line.quantity, line_type=line.line_type,
+                unit_price=line.unit_price, currency=line.currency,
+            )
+            savepoint.commit()
+            result.add(recorded.outcome)  # created | unchanged | conflict | other_path (already imported by CSV)
+        except DomainError as exc:  # e.g. a weight item with 5 decimals: one line, not the whole sync
+            savepoint.rollback()
+            result.add("error")
+            result.unmatched.append({"order_id": line.order_id, "error": str(exc)})
 
 
 def sync_inventory(session: Session, account: ConnectorAccount, *, catalog_object_ids: list[str] | None = None,
@@ -397,7 +446,15 @@ def handle_event(session: Session, account: ConnectorAccount, event: ConnectorEv
         ids = sorted({c["catalog_object_id"] for c in counts if c.get("catalog_object_id")}) or None
         locations = sorted({c["location_id"] for c in counts if c.get("location_id")}) or None
         return sync_inventory(session, account, catalog_object_ids=ids, external_location_ids=locations)
-    if event.event_type and event.event_type.startswith("order."):
+    if event.event_type == "oauth.authorization.revoked":
+        account.status, account.access_token_enc, account.refresh_token_enc = "revoked", None, None
+        account.updated_at = _now()
+        session.flush()
+        return SyncResult("revoked")
+    if event.event_type and event.event_type.startswith("refund."):
+        order_id = data.get("object", {}).get("refund", {}).get("order_id")
+        data = {"id": order_id}
+    if event.event_type and (event.event_type.startswith("order.") or event.event_type.startswith("refund.")):
         order_id = data.get("id")
         result = SyncResult("order")
         if order_id:

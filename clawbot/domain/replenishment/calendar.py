@@ -35,6 +35,7 @@ class SupplierCalendar:
 @dataclass(frozen=True)
 class Arrival:
     order_date: date
+    delivery_date: date
     usable_date: date
     arrival_day: int  # end-of-day index relative to the store planning date
     notes: tuple[str, ...]
@@ -62,7 +63,7 @@ def arrival_for_order_now(
 
     notes.append(f"{lead_time_days}-day lead time")
     if lead_time_days <= 0:
-        usable = order_date  # same-day (e.g. cash-and-carry pickup)
+        usable = delivery = order_date  # same-day (e.g. cash-and-carry pickup)
     else:
         delivery = order_date + timedelta(days=lead_time_days - 1)
         for _ in range(MAX_ROLL_DAYS):
@@ -81,7 +82,7 @@ def arrival_for_order_now(
                                               for d in sorted(cal.delivery_weekdays)))
 
     planning_date = now.astimezone(ZoneInfo(store_timezone)).date()
-    return Arrival(order_date, usable, (usable - planning_date).days, tuple(notes))
+    return Arrival(order_date, delivery, usable, (usable - planning_date).days, tuple(notes))
 
 
 def arrival_day_for_eta(*, eta: datetime, now: datetime, store_timezone: str) -> int:

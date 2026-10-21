@@ -64,6 +64,8 @@ def load() -> SquareConfig:
         raise ValidationFailed(f"SQUARE_ENVIRONMENT must be one of {sorted(BASE_URLS)}")
     if environment == "production" and os.getenv("TABULA_ENV") != "production":
         raise ValidationFailed("SQUARE_ENVIRONMENT=production requires TABULA_ENV=production")
+    if environment == "mock" and os.getenv("TABULA_ENV") == "production":
+        raise ValidationFailed("The mock Square cannot be used when TABULA_ENV=production; set SQUARE_ENVIRONMENT")
     return SquareConfig(
         environment=environment,
         application_id=os.getenv("SQUARE_APPLICATION_ID"),

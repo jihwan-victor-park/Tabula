@@ -78,8 +78,14 @@ class OfferInputs:
     unit_price: Decimal  # per order unit
     currency: str
     price_as_of: str
-    arrival_day: int  # first usable day for an order placed now, from the supplier calendar
+    arrival_day: int  # end-of-day index after which an order placed now is usable
     calendar_notes: tuple[str, ...] = ()
+    price_id: str | None = None
+    price_type: str | None = None
+    price_source: str | None = None
+    order_date: str | None = None  # supplier-local date the order counts as placed
+    delivery_date: str | None = None
+    usable_date: str | None = None
 
 
 @dataclass(frozen=True)
@@ -118,7 +124,7 @@ class ItemInputs:
 class ItemResult:
     variant_id: str
     sku: str
-    status: str  # order | no_order | no_supplier | insufficient_data | excluded
+    status: str  # order | on_hold | no_order | no_supplier | insufficient_data | excluded
     order_qty: Decimal = ZERO  # order units
     order_uom: str | None = None
     base_qty: Decimal = ZERO
@@ -130,6 +136,8 @@ class ItemResult:
     target: Decimal | None = None
     position: Decimal | None = None
     need: Decimal | None = None
+    need_before_held: Decimal | None = None  # what would be ordered if held (unconfirmed/overdue) orders did not exist
+    held_qty: Decimal = ZERO  # ordered but not counted as arriving
     stockout_days: list[int] = field(default_factory=list)  # with the recommended order
     stockout_days_without_order: list[int] = field(default_factory=list)
     days_of_cover: Decimal | None = None
@@ -335,8 +343,12 @@ def recommend(item: ItemInputs, policy: Policy) -> ItemResult:
     best = min(options, key=lambda o: (len(o["stockouts"]), o["unit_cost"], o["supplier"]))
     offer = best["offer"]
     if offer is not None:
-        r.step("Order arrives (usable from)", f"day {max(offer.arrival_day, 0) + 1}",
-               "; ".join(offer.calendar_notes) or f"lead time from {offer.supplier_name}")
+        usable_day = max(offer.arrival_day, 0) + 1
+        r.step("Order arrives (usable from)", f"day {usable_day}" + (f" ({offer.usable_date})" if offer.usable_date else ""),
+               (f"ordered {offer.order_date}, delivered {offer.delivery_date}, on the shelf from the start of "
+                f"{offer.usable_date}; " if offer.order_date else "")
+               + "; ".join(offer.calendar_notes)
+               + f". Day 1 = {item.planning_date.isoformat()}; stock is projected at the start of each day")
         if len(options) > 1:
             r.step("Supplier choice", offer.supplier_name,
                    "fewest projected stockout days, then lowest cost per unit, among "
@@ -353,6 +365,7 @@ def recommend(item: ItemInputs, policy: Policy) -> ItemResult:
     for label, value, formula in best["steps"]:
         r.step(label, value, formula)
     r.target, r.position, r.need = best["target"], best["position"], best["need"]
+    r.need_before_held, r.held_qty = best["need_before_held"], held_qty
     q = best["quantity"]
     if offer is not None:
         r.supplier_item_id, r.supplier_id = offer.supplier_item_id, offer.supplier_id
@@ -365,7 +378,16 @@ def recommend(item: ItemInputs, policy: Policy) -> ItemResult:
                f"{_json(best['need'])} rounded up to {offer.order_uom} of {_json(offer.units_per_order_uom)}"
                + (f", applied {', '.join(q.constraints_applied)}" if q.constraints_applied else ""))
         r.step("Line cost", f"{_json(r.line_cost)} {offer.currency}",
-               f"{_json(q.order_qty)} × {_json(offer.unit_price)} (price as of {offer.price_as_of})")
+               f"{_json(q.order_qty)} {offer.order_uom} × {_json(offer.unit_price)} {offer.currency} per "
+               f"{offer.order_uom} of {_json(offer.units_per_order_uom)} "
+               f"({offer.price_type or 'price'}{', ' + offer.price_source if offer.price_source else ''}, "
+               f"valid from {offer.price_as_of})")
+    elif held_qty > 0 and best["need_before_held"] > 0 and best["need"] == 0:
+        r.status = "on_hold"
+        r.reason("reorder_on_hold",
+                 f"Needs {_json(best['need_before_held'])} more, but {_json(held_qty)} already ordered is not confirmed "
+                 "or not arriving on schedule — confirm those orders with the supplier before reordering",
+                 need_before_held=best["need_before_held"], held=held_qty)
 
     # --- projection and stockout reasons
     if demand is not None:
@@ -414,6 +436,7 @@ def _evaluate(item: ItemInputs, policy: Policy, demand: Demand | None, on_hand: 
     position = _q(on_hand + relevant_qty + held_qty)
     steps.append(("Inventory position", position,
                   "on hand + confirmed inbound in the window + ordered but not counted as arriving"))
+    need_before_held = max(target - _q(on_hand + relevant_qty), ZERO)
     if item.min_qty is not None and position > item.min_qty:
         need = ZERO
         steps.append(("Need", need, f"position above merchant minimum {_json(item.min_qty)}"))
@@ -438,7 +461,8 @@ def _evaluate(item: ItemInputs, policy: Policy, demand: Demand | None, on_hand: 
         rows, stockouts = project(on_hand, demand, item.planning_date, horizon, with_order)
     unit_cost = (offer.unit_price / offer.units_per_order_uom) if offer else ZERO
     return {"offer": offer, "supplier": offer.supplier_name if offer else "", "unit_cost": _q(unit_cost),
-            "target": target, "position": position, "need": need, "quantity": quantity, "steps": steps,
+            "target": target, "position": position, "need": need, "need_before_held": need_before_held,
+            "quantity": quantity, "steps": steps,
             "relevant_qty": relevant_qty, "beyond": beyond, "rows": rows, "stockouts": stockouts,
             "without": without, "horizon": horizon}
 

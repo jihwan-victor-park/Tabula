@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
-from fastapi import Depends, Header, HTTPException, Security
+from fastapi import Depends, Header, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -42,19 +42,40 @@ def get_session() -> Iterator[Session]:
 DbSession = Depends(get_session, scope="function")
 
 
+DEV_ENVIRONMENTS = ("development", "test")
+LOOPBACK_CLIENTS = ("127.0.0.1", "::1", "localhost", "testclient")
+# A page on another site that resolves its own name to 127.0.0.1 (DNS rebinding) still sends its
+# own Host; only requests addressed to a loopback name are accepted in dev mode.
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]", "testserver")
+
+
+def _host_name(host: str) -> str:
+    """Host header without the port ("[::1]:8080" -> "[::1]", "localhost:5173" -> "localhost")."""
+    return host[: host.index("]") + 1] if host.startswith("[") and "]" in host else host.split(":", 1)[0]
+
+
 def auth_mode() -> str:
+    """
+    dev auth (a header names the user) is for a developer's own machine only:
+    it needs TABULA_ENV=development|test explicitly, and requests must come from
+    loopback (enforced in get_current_user), so exposing the port does not expose it.
+    """
     mode = os.getenv("TABULA_AUTH_MODE", "auth0")
-    if mode == "dev" and os.getenv("TABULA_ENV") == "production":
-        raise RuntimeError("TABULA_AUTH_MODE=dev is not allowed when TABULA_ENV=production")
+    if mode == "dev" and os.getenv("TABULA_ENV") not in DEV_ENVIRONMENTS:
+        raise RuntimeError("TABULA_AUTH_MODE=dev requires TABULA_ENV=development (or test)")
     return mode
 
 
 def get_current_user(
+    request: Request,
     session: Session = DbSession,
     credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
     x_dev_user: str | None = Header(default=None),
 ) -> User:
     if auth_mode() == "dev":
+        client = request.client.host if request.client else None
+        if client not in LOOPBACK_CLIENTS or _host_name(request.headers.get("host", "")) not in LOOPBACK_HOSTS or request.headers.get("x-forwarded-for"):
+            raise HTTPException(status_code=403, detail="Dev sign-in only works from this computer")
         if not x_dev_user:
             raise HTTPException(status_code=401, detail="X-Dev-User header required in dev auth mode")
         return tenancy.get_or_create_user(session, auth_subject=f"dev|{x_dev_user}", email=x_dev_user)

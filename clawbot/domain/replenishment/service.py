@@ -43,7 +43,15 @@ from clawbot.policies.permissions import Actor, authorize
 def _no_float(value: Any) -> Any:
     if isinstance(value, float) or isinstance(value, bool):
         raise ValueError("send numbers as strings or integers (e.g. \"2.5\"), not floats")
-    return Decimal(value) if isinstance(value, (str, int)) else value
+    if isinstance(value, (str, int)):
+        try:
+            number = Decimal(value)
+        except ArithmeticError:
+            raise ValueError(f"{value!r} is not a number")
+        if not number.is_finite():
+            raise ValueError("must be a finite number")
+        return number
+    return value
 
 
 DEFAULT_POLICY = Policy(version=0)
@@ -159,6 +167,9 @@ def set_item_setting(
     row.safety_stock, row.min_qty, row.max_qty, row.excluded = safety_stock, min_qty, max_qty, excluded
     row.updated_by_user_id, row.updated_at = actor.user_id, _now()
     session.flush()
+    from clawbot.domain import data_version
+
+    data_version.bump(session, tenant_id)
     audit.record(session, tenant_id=tenant_id, actor=actor, action="replenishment.item_setting_set",
                  object_type="variant", object_id=variant_id, before=before,
                  after={"location_id": str(location_id), "safety_stock": str(safety_stock), "min": str(min_qty),
@@ -172,7 +183,8 @@ def set_item_setting(
 
 
 def _result_json(r: ItemResult) -> dict[str, Any]:
-    keys = ("daily_demand", "target", "position", "need", "stockout_days", "stockout_days_without_order",
+    keys = ("daily_demand", "target", "position", "need", "need_before_held", "held_qty", "stockout_days",
+            "stockout_days_without_order",
             "days_of_cover", "priority", "reasons", "steps", "projection")
     return {k: codec.dumps(getattr(r, k)) for k in keys}
 
@@ -192,13 +204,19 @@ def create_run(
     historical = now - cutoff > HISTORICAL_AFTER
     session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"repl-run:{tenant_id}:{location_id}", 0))))
 
+    from clawbot.domain import data_version
+
+    version_seen = data_version.current(session, tenant_id)  # read before gathering: later commits bump past it
     policy = current_policy(session, tenant_id=tenant_id)
+    latest_current = current_run(session, tenant_id=tenant_id, location_id=location_id)
+    if latest_current is not None and latest_current.cutoff > cutoff:
+        historical = True  # never replace a plan computed for a later moment
     if not historical:
         # A scheduler and a person pressing "plan" moments apart get the same plan.
         latest = current_run(session, tenant_id=tenant_id, location_id=location_id)
         if (latest is not None and latest.policy_version == policy.version
                 and (now - latest.cutoff).total_seconds() < REUSE_SECONDS
-                and not newer_data_since(session, latest)):
+                and latest.data_version == version_seen):
             return latest, False
     gathered = gather(session, tenant_id=tenant_id, location_id=location_id, cutoff=cutoff, policy=policy)
     input_digest = codec.digest(policy, cutoff.isoformat(), gathered.items, gathered.suppliers)
@@ -229,6 +247,7 @@ def create_run(
         policy_version=policy.version, engine_version=ENGINE_VERSION, input_digest=input_digest,
         status="historical" if historical else "current",
         actor_kind=actor.kind, actor_user_id=actor.user_id, actor_name=actor.name, policy=codec.dumps(policy),
+        data_version=version_seen,
         summary={"lines": counts, "needs_review": sum(r.needs_review for r in results)}, plan_notes=notes,
     )
     session.add(run)

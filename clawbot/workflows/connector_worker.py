@@ -17,6 +17,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from clawbot.connectors.square import service as square
+from clawbot.connectors.square.client import SquareError
 from clawbot.domain import outbox
 from clawbot.persistence.db import transaction
 from clawbot.persistence.models import ConnectorEvent
@@ -69,7 +70,10 @@ def run_once(*, limit: int = 5, lease: timedelta = timedelta(minutes=10)) -> int
                     continue
                 try:
                     account = square.get_account(session, tenant_id=tenant_id, account_id=uuid.UUID(payload["account_id"]))
-                    square.record_sync(session, account, f"{topic}: {type(exc).__name__}: {exc}")
+                    if isinstance(exc, SquareError) and exc.status == 401:
+                        square.mark_needs_reauth(session, account, f"Square refused the token ({exc.category}); reconnect")
+                    else:
+                        square.record_sync(session, account, f"{topic}: {type(exc).__name__}: {exc}")
                 except Exception:  # noqa: BLE001
                     pass
     return len(claimed)

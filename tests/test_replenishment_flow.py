@@ -8,6 +8,7 @@ from __future__ import annotations
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -95,11 +96,12 @@ def test_spec_example_through_imports(shop):
 def test_unconfirmed_open_order_is_not_ordered_again(shop):
     rows = [["Supplier", "PO #", "SKU", "Qty Remaining", "Confirmed"], ["Phillips Pet", "PO-80", "LITTER-20", "60", "no"]]
     imp = _upload(shop, "open_orders", _csv(rows), location_id=shop.location_id).json()
-    _mapping(shop, imp, quantity_unit="base", as_of=_iso(), complete_list=False)
+    _mapping(shop, imp, quantity_unit="base", as_of=_iso(), complete_scope="none")
     _apply(shop, imp)
     line = _line(_run(shop).json())
-    assert (line["status"], line["order_qty"], line["position"]) == ("no_order", "0", "78")
-    assert {r["code"] for r in line["reasons"]} == {"unconfirmed_open_order", "stockout_risk_unconfirmed"}
+    assert (line["status"], line["order_qty"], line["position"]) == ("on_hold", "0", "78")
+    assert (line["need_before_held"], line["held_qty"]) == ("60", "60")
+    assert {r["code"] for r in line["reasons"]} == {"unconfirmed_open_order", "reorder_on_hold", "stockout_risk_unconfirmed"}
 
 
 def test_confirmed_open_order_with_eta_counts_as_arriving(shop):
@@ -107,7 +109,7 @@ def test_confirmed_open_order_with_eta_counts_as_arriving(shop):
     rows = [["Supplier", "PO #", "SKU", "Qty Remaining", "ETA", "Confirmed"],
             ["Phillips Pet", "PO-81", "LITTER-20", "24", eta, "yes"]]
     imp = _upload(shop, "open_orders", _csv(rows), location_id=shop.location_id).json()
-    _mapping(shop, imp, quantity_unit="base", as_of=_iso(), complete_list=False)
+    _mapping(shop, imp, quantity_unit="base", as_of=_iso(), complete_scope="none")
     _apply(shop, imp)
     line = _line(_run(shop).json())
     assert (line["position"], line["order_qty"]) == ("42", "3")
@@ -273,19 +275,19 @@ def test_r8_policy_values_are_typed(shop):
 def _open_orders(api, rows, as_of, complete):
     header = ["Supplier", "PO #", "SKU", "Qty Remaining", "Confirmed"]
     imp = _upload(api, "open_orders", _csv([header, *rows]), name=f"oo-{as_of}.csv", location_id=api.location_id).json()
-    _mapping(api, imp, quantity_unit="base", as_of=as_of, complete_list=complete)
+    _mapping(api, imp, quantity_unit="base", as_of=as_of, complete_scope=complete)
     return _apply(api, imp)
 
 
 def test_5_12_complete_report_closes_missing_lines_and_older_reports_do_not_overwrite(shop):
-    _open_orders(shop, [["Phillips Pet", "PO-1", "LITTER-20", "60", "no"]], _iso(hours=-2), complete=False)
+    _open_orders(shop, [["Phillips Pet", "PO-1", "LITTER-20", "60", "no"]], _iso(hours=-2), complete="none")
     assert len(shop.get("/v1/open-orders").json()) == 1
     # A newer complete report no longer lists PO-1 (received) → closed, so it stops blocking reorders.
-    done = _open_orders(shop, [["Phillips Pet", "PO-2", "LITTER-20", "12", "yes"]], _iso(hours=-1), complete=True)
+    done = _open_orders(shop, [["Phillips Pet", "PO-2", "LITTER-20", "12", "yes"]], _iso(hours=-1), complete="suppliers_in_file")
     assert done["summary"]["closed_missing_lines"] == 1
     assert [l["external_po_number"] for l in shop.get("/v1/open-orders").json()] == ["PO-2"]
     # An older report cannot overwrite the newer state.
-    older = _open_orders(shop, [["Phillips Pet", "PO-2", "LITTER-20", "99", "yes"]], _iso(hours=-3), complete=False)
+    older = _open_orders(shop, [["Phillips Pet", "PO-2", "LITTER-20", "99", "yes"]], _iso(hours=-3), complete="none")
     assert older["summary"]["applied_counts"] == {"skipped": 1}
     assert shop.get("/v1/open-orders").json()[0]["outstanding_qty"] == "12.0000"
 
@@ -294,4 +296,82 @@ def test_5_12_open_order_files_must_declare_time_and_completeness(shop):
     imp = _upload(shop, "open_orders", _csv([["Supplier", "PO #", "SKU", "Qty Remaining"],
                                              ["Phillips Pet", "PO-1", "LITTER-20", "6"]]), location_id=shop.location_id).json()
     _mapping(shop, imp, quantity_unit="base")
-    assert {"declare_as_of", "declare_complete_list"} <= set(shop.get(f"/v1/imports/{imp['id']}/preview").json()["blocking_issues"])
+    assert {"declare_as_of", "declare_complete_scope"} <= set(shop.get(f"/v1/imports/{imp['id']}/preview").json()["blocking_issues"])
+
+
+# ---------------------------------------------------------------------------
+# CP5 review round 2
+# ---------------------------------------------------------------------------
+
+
+def test_r2_1_change_dated_before_the_count_is_not_applied_twice(shop):
+    import uuid as _uuid
+
+    body = {"variant_id": shop.variant["id"], "location_id": shop.location_id, "delta": "-1", "reason": "damage",
+            "occurred_at": _iso(hours=-1)}  # before the count (5 min ago), entered now
+    assert shop.post("/v1/inventory/movements", body, headers={"Idempotency-Key": f"k-{_uuid.uuid4()}"}).status_code == 201
+    assert _line(_run(shop).json())["position"] == "18"
+
+
+def test_r2_2_one_origin_cannot_fill_another_origins_gap(client):
+    api = new_store(client, "two@example.com", "Two Origins")
+    loc = api.post("/v1/locations", {"name": "T", "timezone": "America/New_York"}).json()["id"]
+    for sku in ("A", "B"):
+        api.post("/v1/variants", {"sku": sku, "name": sku})
+    today = datetime.now(NY).date()
+    rows = [["Date", "Transaction ID", "SKU", "Qty"]] + [
+        [f"{(today - timedelta(days=n)).isoformat()}T12:00:00", f"T-{n}-{sku}", sku, "6"]
+        for n in range(28, 14, -1) for sku in ("A", "B")]
+    _apply(api, _upload(api, "sales", _csv(rows), name="sq.csv", location_id=loc, source_system="square").json())
+    small = [["Date", "Transaction ID", "SKU", "Qty"], [f"{(today - timedelta(days=14)).isoformat()}T12:00:00", "S-1", "A", "1"],
+             [f"{(today - timedelta(days=1)).isoformat()}T12:00:00", "S-2", "A", "1"]]
+    _apply(api, _upload(api, "sales", _csv(small), name="shop.csv", location_id=loc, source_system="shopify").json())
+    count = _upload(api, "inventory", _csv([["SKU", "Qty"], ["A", "5"], ["B", "5"]]), location_id=loc).json()
+    _mapping(api, count, as_of=_iso(minutes=-5))
+    _apply(api, count)
+    run = api.post("/v1/replenishment-runs", {"location_id": loc}).json()
+    demand = {l["sku"]: l["daily_demand"] for l in run["lines"]}
+    assert demand == {"A": "6", "B": "6"}  # square's missing last 14 days are not zeros
+
+
+def test_r2_3_same_po_number_at_two_locations_stays_separate(shop):
+    other = shop.post("/v1/locations", {"name": "Second", "timezone": "America/New_York"}).json()["id"]
+    for loc, qty in ((shop.location_id, "24"), (other, "12")):
+        imp = _upload(shop, "open_orders", _csv([["Supplier", "PO #", "SKU", "Qty Remaining", "Confirmed"],
+                                                 ["Phillips Pet", "PO-1", "LITTER-20", qty, "no"]]),
+                      name=f"oo-{loc}.csv", location_id=loc).json()
+        _mapping(shop, imp, quantity_unit="base", as_of=_iso(), complete_scope="none")
+        _apply(shop, imp)
+    assert sorted(l["outstanding_qty"] for l in shop.get("/v1/open-orders").json()) == ["12.0000", "24.0000"]
+
+
+def test_r2_4_all_suppliers_report_closes_a_supplier_with_no_rows(shop):
+    other = shop.post("/v1/suppliers", {"name": "Other Dist", "currency": "USD", "timezone": "America/New_York"}).json()
+    _open_orders(shop, [["Other Dist", "PO-9", "LITTER-20", "6", "no"]], _iso(hours=-2), complete="none")
+    imp = _upload(shop, "open_orders", _csv([["Supplier", "PO #", "SKU", "Qty Remaining", "Confirmed"],
+                                             ["Phillips Pet", "PO-2", "LITTER-20", "12", "yes"]]),
+                  name="all.csv", location_id=shop.location_id).json()
+    _mapping(shop, imp, quantity_unit="base", as_of=_iso(hours=-1), complete_scope="all_suppliers")
+    done = _apply(shop, imp)
+    assert done["summary"]["closed_missing_lines"] == 1
+    assert [l["external_po_number"] for l in shop.get("/v1/open-orders").json()] == ["PO-2"]
+    assert other
+
+
+def test_r2_5_policy_garbage_is_422_and_older_runs_never_replace_newer(shop):
+    put = lambda changes: shop.client.put("/v1/replenishment/policy", json={"changes": changes}, headers=shop.headers())
+    assert put({"safety_days": "abc"}).status_code == 422
+    now_run = _run(shop).json()
+    earlier = _run(shop, as_of=_iso(minutes=-3)).json()
+    assert earlier["status"] == "historical"
+    assert shop.get("/v1/recommendations", params={"location_id": shop.location_id}).json()["run"]["id"] == now_run["id"]
+
+
+def test_plan_line_states_stock_and_the_three_arrival_dates(shop):
+    """Lead 4, ordered today: delivered at the end of day 4 (today + 3), on the shelf from day 5 (today + 4)."""
+    line = _line(_run(shop).json())
+    today = datetime.now(NY).date()
+    assert line["on_hand"] == "18"
+    assert line["arrival"] == {"order_date": today.isoformat(), "delivery_date": (today + timedelta(days=3)).isoformat(),
+                               "usable_date": (today + timedelta(days=4)).isoformat()}
+    assert next(d for d in line["projection"] if Decimal(d["arriving"]) > 0)["date"] == (today + timedelta(days=3)).isoformat()

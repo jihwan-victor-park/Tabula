@@ -11,7 +11,8 @@ from __future__ import annotations
 import re
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal
 from typing import Any, Callable, Literal
 
@@ -146,15 +147,18 @@ class InventorySettings(_Settings):
 
 
 class SalesSettings(_Settings):
-    pass
+    # The period the export covers (local dates, inclusive). Declared by a person: a file's
+    # first and last rows do not prove that every day in between was exported.
+    period_start: date | None = None
+    period_end: date | None = None
 
 
 class OpenOrderSettings(_Settings):
     quantity_unit: Literal["base", "order_unit"] | None = None  # must be declared
     supplier_id: uuid.UUID | None = None  # when the file has no supplier column
     as_of: datetime | None = PField(default=None, description="When this report was true (must be declared)")
-    complete_list: bool | None = PField(
-        default=None, description="True: every open order for these suppliers is listed; missing ones are closed")
+    complete_scope: Literal["none", "suppliers_in_file", "all_suppliers"] | None = PField(
+        default=None, description="Which suppliers this report lists completely; their unlisted open orders are closed")
 
 
 SETTINGS: dict[str, type[_Settings]] = {
@@ -407,6 +411,11 @@ def interpret_sales(ctx: Context, number: int, cells: list[str]) -> RowResult:
         elif line_type == "refund":
             quantity = -quantity
     line_id = _parse(row, ctx, cells, "line_id", v.bounded_text(200), required="line_id" in ctx.columns)
+    if sold_at is not None and s.period_start and s.period_end:
+        local = sold_at.astimezone(ZoneInfo(tz)).date()
+        if not s.period_start <= local <= s.period_end:
+            row.error(ctx.columns.get("sold_at"), f"Sale on {local} is outside the declared period "
+                      f"{s.period_start}–{s.period_end}")
     # Keys use the file's own identifiers, never what Tabula resolved them to: if a
     # barcode is later re-linked to another item, a re-import still matches.
     sku_in, barcode_in = row.values.get("_sku_input"), row.values.get("_barcode_input")
@@ -492,6 +501,8 @@ def blocking_issues(kind: str, columns: dict[str, str], settings: Any) -> list[s
             issues.append("declare_order_uom")
     if kind == "inventory" and "as_of" not in columns and settings.as_of is None:
         issues.append("declare_as_of")
+    if kind == "sales" and (settings.period_start is None or settings.period_end is None):
+        issues.append("declare_period")
     if kind == "open_orders":
         if settings.quantity_unit is None:
             issues.append("declare_quantity_unit")
@@ -499,8 +510,8 @@ def blocking_issues(kind: str, columns: dict[str, str], settings: Any) -> list[s
             issues.append("declare_supplier")
         if settings.as_of is None:
             issues.append("declare_as_of")
-        if settings.complete_list is None:
-            issues.append("declare_complete_list")
+        if settings.complete_scope is None:
+            issues.append("declare_complete_scope")
     return issues
 
 
@@ -512,8 +523,8 @@ DECLARED_SETTINGS: dict[str, tuple[str, ...]] = {
     "supplier_price_list": ("price_basis", "units_per_order_uom", "order_uom", "currency", "price_type",
                             "update_pack_on_change", *_COMMON_DECLARED),
     "inventory": ("as_of", "create_missing_variants", *_COMMON_DECLARED),
-    "sales": _COMMON_DECLARED,
-    "open_orders": ("quantity_unit", "supplier_id", "as_of", "complete_list", *_COMMON_DECLARED),
+    "sales": ("period_start", "period_end", *_COMMON_DECLARED),
+    "open_orders": ("quantity_unit", "supplier_id", "as_of", "complete_scope", *_COMMON_DECLARED),
 }
 
 

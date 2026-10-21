@@ -174,3 +174,21 @@ def get_location(
     if location is None:
         raise NotFound(f"Location not found: {location_id}")
     return location
+
+
+ADDRESS_FIELDS = ("address_line1", "address_line2", "city", "region", "postal_code", "country")
+
+
+def set_location_address(session: Session, *, tenant_id: uuid.UUID, actor: Actor, location_id: uuid.UUID,
+                         address: dict) -> Location:
+    """The ship-to address purchase orders use."""
+    authorize(actor, "location.edit")
+    location = get_location(session, tenant_id=tenant_id, location_id=location_id)
+    before = {f: getattr(location, f) for f in ADDRESS_FIELDS}
+    for f in ADDRESS_FIELDS:
+        value = address.get(f)
+        setattr(location, f, value.strip().upper() if f == "country" and value else (value.strip() or None) if value else None)
+    session.flush()
+    audit.record(session, tenant_id=tenant_id, actor=actor, action="location.address_set", object_type="location",
+                 object_id=location.id, before=before, after={f: getattr(location, f) for f in ADDRESS_FIELDS})
+    return location

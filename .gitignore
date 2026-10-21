@@ -34,3 +34,6 @@ secrets/
 .openclaw/identity_*.md
 .openclaw/soul_*.md
 .openclaw/memory_*.md
+
+# Local demo output (scripts/dev.sh, seed_demo)
+var/
