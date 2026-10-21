@@ -372,3 +372,10 @@ def test_r2_crashed_worker_job_marks_import_failed(store):
         outbox.claim_batch(s, lease=timedelta(seconds=-1), topics=("import.apply",))
     import_worker.run_once()  # lease expiry → dead; sweep marks the import
     assert store.get(f"/v1/imports/{imp['id']}").json()["status"] == "failed"
+
+
+def test_upload_keeps_working_after_psycopg_prepares_the_statement(store):
+    """ON CONFLICT on a partial index must use a literal predicate (bound params stop matching once prepared)."""
+    for n in range(8):
+        rows = [["Date", "Transaction ID", "SKU", "Qty"], ["2026-10-01T10:00:00", f"T-{n}", "FOOD-5", "1"]]
+        assert _sales_upload(store, rows, name=f"f{n}.csv").status_code == 201

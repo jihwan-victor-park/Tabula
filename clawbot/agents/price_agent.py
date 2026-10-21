@@ -8,6 +8,8 @@ when savings exceed the configured threshold, then emits a final PriceReport.
 
 from __future__ import annotations
 
+from clawbot.agents.limits import agent_steps
+
 import json
 import os
 from datetime import datetime, timezone
@@ -389,7 +391,7 @@ def run_price_agent(business_name: str, location: str) -> PriceReport:
     raw_reasoning = ""
 
     # Agentic loop — keep going until the model stops using tools
-    while True:
+    for _step in agent_steps():  # bounded: max tool steps + total timeout
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=8192,

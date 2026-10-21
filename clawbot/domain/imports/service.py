@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -136,7 +136,9 @@ def create_import(
         )
         .on_conflict_do_nothing(
             index_elements=["tenant_id", "kind", "file_sha256", "context_key"],
-            index_where=Import.status.not_in(("rejected", "failed")),
+            # Literal SQL, not bound parameters: once psycopg prepares the statement,
+            # a parameterised predicate no longer matches the partial index.
+            index_where=text("status NOT IN ('rejected', 'failed')"),
         )
         .returning(Import.id)
     ).scalar_one_or_none()

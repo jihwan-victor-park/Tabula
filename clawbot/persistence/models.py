@@ -742,6 +742,30 @@ class SalesLine(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class SalesCoverage(Base):
+    """
+    Local dates a sales source is known to have reported completely for a location
+    (one row per import file or connector sync window). A day inside coverage with
+    no sales is a zero-sales day; a day outside it is missing data (spec 3.4, 5.1).
+    """
+
+    __tablename__ = "sales_coverage"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "location_id", "source_system", "source_ref"),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        CheckConstraint("ends_on >= starts_on", name="range_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source_system: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    starts_on: Mapped[date] = mapped_column(Date, nullable=False)
+    ends_on: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class ExternalOpenOrderLine(Base):
     """
     An order already placed outside Tabula and not yet fully received. Used to
@@ -768,8 +792,200 @@ class ExternalOpenOrderLine(Base):
     ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     supplier_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # When the report this line came from was true; an older report never overwrites a newer one.
+    reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when a later complete report no longer listed the line (received or cancelled).
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+# ---------------------------------------------------------------------------
+# Replenishment (CP5)
+# ---------------------------------------------------------------------------
+
+REPLENISHMENT_RUN_STATUSES = ("current", "superseded", "historical")
+REPLENISHMENT_LINE_STATUSES = ("order", "no_order", "no_supplier", "insufficient_data", "excluded")
+
+
+class ReplenishmentPolicy(Base):
+    """Versioned merchant policy; a run records the version it used."""
+
+    __tablename__ = "replenishment_policies"
+    __table_args__ = (UniqueConstraint("tenant_id", "version"),)
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ReplenishmentItemSetting(Base):
+    """Per item and location: merchant safety stock, min/max, or exclusion."""
+
+    __tablename__ = "replenishment_item_settings"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"], ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"], ondelete="CASCADE"),
+        CheckConstraint("safety_stock IS NULL OR safety_stock >= 0", name="safety_nonneg"),
+        CheckConstraint("min_qty IS NULL OR min_qty >= 0", name="min_nonneg"),
+        CheckConstraint("max_qty IS NULL OR max_qty > 0", name="max_positive"),
+        CheckConstraint("min_qty IS NULL OR max_qty IS NULL OR min_qty < max_qty", name="min_below_max"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    safety_stock: Mapped[Decimal | None] = mapped_column(QTY)
+    min_qty: Mapped[Decimal | None] = mapped_column(QTY)
+    max_qty: Mapped[Decimal | None] = mapped_column(QTY)
+    excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ReplenishmentRun(Base):
+    """
+    One deterministic plan for one location. `input_digest` covers every input
+    and the policy, so the same data and policy are recognised as the same plan.
+    Only the newest run per location is `current`.
+    """
+
+    __tablename__ = "replenishment_runs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "location_id", "input_digest"),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        CheckConstraint(_in("status", REPLENISHMENT_RUN_STATUSES), name="status_valid"),
+        CheckConstraint(_in("actor_kind", ACTOR_KINDS), name="actor_kind_valid"),
+        Index("uq_replenishment_runs_one_current", "tenant_id", "location_id", unique=True,
+              postgresql_where=text("status = 'current'")),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    planning_date: Mapped[date] = mapped_column(Date, nullable=False)
+    policy_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(20), nullable=False)
+    input_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="current")
+    actor_kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    actor_name: Mapped[str | None] = mapped_column(String(80))
+    policy: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    summary: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    plan_notes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ReplenishmentLine(Base):
+    __tablename__ = "replenishment_lines"
+    __table_args__ = (
+        UniqueConstraint("run_id", "variant_id"),
+        ForeignKeyConstraint(["tenant_id", "run_id"], ["replenishment_runs.tenant_id", "replenishment_runs.id"],
+                             ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
+        CheckConstraint(_in("status", REPLENISHMENT_LINE_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    variant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    order_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    order_uom: Mapped[str | None] = mapped_column(String(20))
+    base_qty: Mapped[Decimal] = mapped_column(QTY, nullable=False)
+    line_cost: Mapped[Decimal | None] = mapped_column(MONEY)
+    currency: Mapped[str | None] = mapped_column(String(3))
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    supplier_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    inputs: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)  # replayable snapshot
+    result: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)  # steps, reasons, projection
+
+
+# ---------------------------------------------------------------------------
+# Connectors (CP4)
+# ---------------------------------------------------------------------------
+
+CONNECTOR_PROVIDERS = ("square",)
+CONNECTOR_ENVIRONMENTS = ("mock", "sandbox", "production")
+CONNECTOR_STATUSES = ("active", "revoked", "error")
+
+
+class ConnectorAccount(Base):
+    """
+    One provider account connected to one tenant. Tokens are encrypted at rest
+    (clawbot/security/secrets.py); a provider merchant connects to one tenant only,
+    so webhooks route unambiguously.
+    """
+
+    __tablename__ = "connector_accounts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("provider", "environment", "external_merchant_id"),
+        CheckConstraint(_in("provider", CONNECTOR_PROVIDERS), name="provider_valid"),
+        CheckConstraint(_in("environment", CONNECTOR_ENVIRONMENTS), name="environment_valid"),
+        CheckConstraint(_in("status", CONNECTOR_STATUSES), name="status_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False)
+    external_merchant_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    scopes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    access_token_enc: Mapped[str | None] = mapped_column(Text)
+    refresh_token_enc: Mapped[str | None] = mapped_column(Text)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ConnectorLocationLink(Base):
+    """A provider location chosen by the merchant for a Tabula location (never auto-summed, spec 3.2)."""
+
+    __tablename__ = "connector_location_links"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "location_id"),
+        ForeignKeyConstraint(["tenant_id", "connector_account_id"], ["connector_accounts.tenant_id", "connector_accounts.id"],
+                             ondelete="CASCADE"),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+    )
+
+    connector_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    external_location_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class OAuthState(Base):
+    """Single-use, short-lived state binding an OAuth redirect to the tenant and person who started it."""
+
+    __tablename__ = "oauth_states"
+
+    state_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant_fk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()

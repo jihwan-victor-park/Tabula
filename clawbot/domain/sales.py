@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import func, select
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from clawbot.domain import catalog, tenancy
 from clawbot.domain.errors import ValidationFailed
 from clawbot.domain.units import QTY_SCALE, validate_currency
-from clawbot.persistence.models import SALES_KEY_SCHEMES, SALES_SOURCES, SalesLine
+from clawbot.persistence.models import SALES_KEY_SCHEMES, SALES_SOURCES, SalesCoverage, SalesLine
 from clawbot.policies.permissions import Actor, authorize
 
 
@@ -109,3 +109,46 @@ def list_sales_lines(
     if variant_id is not None:
         stmt = stmt.where(SalesLine.variant_id == variant_id)
     return list(session.scalars(stmt.order_by(SalesLine.sold_at.desc()).limit(limit)))
+
+
+def record_coverage(
+    session: Session,
+    *,
+    tenant_id: uuid.UUID,
+    actor: Actor,
+    location_id: uuid.UUID,
+    source_system: str,
+    source_ref: str,
+    starts_on: date,
+    ends_on: date,
+) -> None:
+    """Declare that `source_system` reported every sale at this location for these local dates."""
+    authorize(actor, "sales.record")
+    if ends_on < starts_on:
+        raise ValidationFailed("ends_on must be on or after starts_on")
+    tenancy.get_location(session, tenant_id=tenant_id, location_id=location_id)
+    session.execute(
+        insert(SalesCoverage)
+        .values(id=uuid.uuid4(), tenant_id=tenant_id, location_id=location_id, source_system=source_system,
+                source_ref=source_ref, starts_on=starts_on, ends_on=ends_on)
+        .on_conflict_do_nothing(index_elements=["tenant_id", "location_id", "source_system", "source_ref"])
+    )
+
+
+def covered_dates(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, start: date, end: date) -> set[date] | None:
+    """Covered local dates in [start, end], or None if this location has no coverage records at all."""
+    from datetime import timedelta
+
+    rows = list(session.execute(
+        select(SalesCoverage.starts_on, SalesCoverage.ends_on).where(
+            SalesCoverage.tenant_id == tenant_id, SalesCoverage.location_id == location_id)
+    ))
+    if not rows:
+        return None
+    days: set[date] = set()
+    for a, b in rows:
+        day = max(a, start)
+        while day <= min(b, end):
+            days.add(day)
+            day += timedelta(days=1)
+    return days

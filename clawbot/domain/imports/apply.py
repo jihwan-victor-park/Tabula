@@ -156,8 +156,11 @@ def _apply_open_order_row(session: Session, imp: Import, ctx: kinds.Context, act
         session, tenant_id=imp.tenant_id, actor=actor, supplier_id=v["supplier_id"], variant_id=v["variant_id"],
         location_id=uuid.UUID(imp.context["location_id"]), external_po_number=v["po_number"],
         outstanding_qty=v["outstanding_qty"], supplier_confirmed=v["confirmed"], ordered_at=v["ordered_at"],
-        expected_at=v["expected_at"], import_id=imp.id,
+        expected_at=v["expected_at"], import_id=imp.id, reported_at=ctx.settings.as_of,
     )
+    if result.outcome == "older_report":
+        r.warn(None, "A newer report already updated this order line; not changed")
+        return "skipped", f"open_order_line:{result.line.id}"
     return ("unchanged" if result.outcome == "unchanged" else "applied"), f"open_order_line:{result.line.id}"
 
 
@@ -249,6 +252,39 @@ def apply_import(session: Session, *, tenant_id: uuid.UUID, import_id: uuid.UUID
         session.flush()
         return imp
     everything.commit()
+
+    if imp.kind == "open_orders" and ctx.settings.complete_list:
+        # A complete report closes each listed supplier's older open lines it no longer shows —
+        # except for suppliers with rows that failed, where "missing" might only mean "unreadable".
+        by_supplier: dict[uuid.UUID, set[tuple[str, uuid.UUID]]] = defaultdict(set)
+        failed_suppliers = {r.values.get("supplier_id") for r in ev.rows if statuses.get(r.row_number, ("",))[0] == "error"}
+        for r in valid:
+            by_supplier[r.values["supplier_id"]].add((r.values["po_number"], r.values["variant_id"]))
+        closed = 0
+        for supplier_id, listed in by_supplier.items():
+            if supplier_id in failed_suppliers or None in failed_suppliers:
+                continue
+            closed += open_orders.close_missing_from_report(
+                session, tenant_id=tenant_id, actor=actor, supplier_id=supplier_id,
+                location_id=uuid.UUID(imp.context["location_id"]), listed=listed,
+                reported_at=ctx.settings.as_of, source_ref=f"import:{imp.id}",
+            )
+        imp.summary = {**imp.summary, "closed_missing_lines": closed}
+
+    if imp.kind == "sales":
+        # The file's date span is declared complete for this origin at this location:
+        # days in it without a row are zero-sales days, not missing data.
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(ctx.timezone)
+        days = [r.values["sold_at"].astimezone(tz).date() for r in valid
+                if statuses.get(r.row_number, ("",))[0] in ("applied", "unchanged")]
+        if days:
+            sales.record_coverage(
+                session, tenant_id=tenant_id, actor=actor, location_id=uuid.UUID(imp.context["location_id"]),
+                source_system=imp.context["source_system"], source_ref=f"import:{imp.id}",
+                starts_on=min(days), ends_on=max(days),
+            )
 
     mark_rows(session, imp, statuses)
     counts: dict[str, int] = defaultdict(int)

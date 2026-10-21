@@ -19,6 +19,11 @@ import pytest
 TEST_DB_URL = os.getenv("TABULA_TEST_DATABASE_URL", "postgresql+psycopg://localhost/tabula_test")
 os.environ["DATABASE_URL"] = TEST_DB_URL
 os.environ["TABULA_AUTH_MODE"] = "dev"
+# Test-only key and mock Square; real keys live in the environment / secret store, never in git.
+os.environ["TABULA_TOKEN_ENCRYPTION_KEY"] = "y3Yw4l6v1oGg0aJk2V5Zr9yX8d3QH7n1s0pTq4eWfUc="  # secret-scan: allow
+os.environ["SQUARE_ENVIRONMENT"] = "mock"
+os.environ["SQUARE_WEBHOOK_SIGNATURE_KEY"] = "test-signature-key"  # secret-scan: allow
+os.environ["SQUARE_WEBHOOK_URL"] = "https://tabula.test/v1/connectors/square/webhook"
 os.environ.pop("TABULA_ENV", None)
 
 from alembic import command  # noqa: E402

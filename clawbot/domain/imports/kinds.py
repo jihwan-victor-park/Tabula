@@ -152,6 +152,9 @@ class SalesSettings(_Settings):
 class OpenOrderSettings(_Settings):
     quantity_unit: Literal["base", "order_unit"] | None = None  # must be declared
     supplier_id: uuid.UUID | None = None  # when the file has no supplier column
+    as_of: datetime | None = PField(default=None, description="When this report was true (must be declared)")
+    complete_list: bool | None = PField(
+        default=None, description="True: every open order for these suppliers is listed; missing ones are closed")
 
 
 SETTINGS: dict[str, type[_Settings]] = {
@@ -494,6 +497,10 @@ def blocking_issues(kind: str, columns: dict[str, str], settings: Any) -> list[s
             issues.append("declare_quantity_unit")
         if "supplier" not in columns and settings.supplier_id is None:
             issues.append("declare_supplier")
+        if settings.as_of is None:
+            issues.append("declare_as_of")
+        if settings.complete_list is None:
+            issues.append("declare_complete_list")
     return issues
 
 
@@ -506,7 +513,7 @@ DECLARED_SETTINGS: dict[str, tuple[str, ...]] = {
                             "update_pack_on_change", *_COMMON_DECLARED),
     "inventory": ("as_of", "create_missing_variants", *_COMMON_DECLARED),
     "sales": _COMMON_DECLARED,
-    "open_orders": ("quantity_unit", "supplier_id", *_COMMON_DECLARED),
+    "open_orders": ("quantity_unit", "supplier_id", "as_of", "complete_list", *_COMMON_DECLARED),
 }
 
 

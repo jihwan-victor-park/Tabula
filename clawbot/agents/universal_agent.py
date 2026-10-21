@@ -10,6 +10,8 @@ the same specialist agents, and the same iMessage delivery layer.
 
 from __future__ import annotations
 
+from clawbot.agents.limits import agent_steps
+
 import json
 import os
 from datetime import datetime, timezone
@@ -376,7 +378,7 @@ def run_universal_agent(req: UserMessage) -> UniversalResult:
         }
     ]
 
-    while True:
+    for _step in agent_steps():  # bounded: max tool steps + total timeout
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=4096,

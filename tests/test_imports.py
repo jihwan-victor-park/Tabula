@@ -359,8 +359,8 @@ def test_open_orders_convert_cases_via_confirmed_supplier_item(store):
     rows = [["Supplier", "PO #", "SKU", "Qty Remaining", "ETA", "Confirmed"],
             ["Phillips Pet", "PO-77", "LITTER-20", "2", "2026-10-24", "yes"]]
     imp = _upload(store, "open_orders", _csv(rows), location_id=store.location_id).json()
-    assert _preview(store, imp)["blocking_issues"] == ["declare_quantity_unit"]
-    _mapping(store, imp, quantity_unit="order_unit")
+    assert _preview(store, imp)["blocking_issues"] == ["declare_quantity_unit", "declare_as_of", "declare_complete_list"]
+    _mapping(store, imp, quantity_unit="order_unit", as_of=datetime.now(timezone.utc).isoformat(), complete_list=False)
     (row,) = _preview(store, imp)["rows"]
     assert "no pack for this item" in row["errors"][0]["message"]  # mapping not confirmed yet
 

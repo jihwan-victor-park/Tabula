@@ -37,6 +37,8 @@ CSV 경로(CP3)로 보충 계산(CP5)까지 먼저 갈 수 있으므로 Square �
 
 Gate: 한 업종·한 POS·주문 채널이 정해지고 실제 파일 1세트가 `data/pilot/`(git 제외)에 있다. 정해진 POS가 Square가 아니면 CP4의 대상을 바꾼다.
 
+**현재: 미착수. CP3·CP5는 합성 파일로만 검증됨 — 실제 고객 파일 검증은 여기서 남아 있음.**
+
 ---
 
 ## [~] CP1 — 운영 기반 (명세 단계 1) `[CORE-01] [CORE-02] [INV-01 일부]`
@@ -57,10 +59,12 @@ Gate: 한 업종·한 POS·주문 채널이 정해지고 실제 파일 1세트�
 - [x] 1.10 connector raw event 저장·중복 제거 `(tenant_id, provider, external_event_id)`
 - [x] 1.11 audit_events: actor(kind/user/name), action, before/after, reason
 - [x] 1.12 pytest를 실제 Postgres(`tabula_test`)로 실행
-- [ ] 1.13 저장소 위생 (결정 필요): git에 추적 중인 `.openclaw/identity/device.json`(`privateKeyPem`), `device-auth.json`·`devices/paired.json`(token), `agents/main/sessions/sessions.json`(sessionKey) → 키·토큰 교체, git 추적 해제, `.gitignore` 추가. 이미 push된 이력에서는 교체가 우선
-- [ ] 1.14 정책 개정 (결정 필요): `AGENTS.md`·`PRICE_DISCOVERY_PLAYBOOK.md`의 "공급업체 연락 금지"와 새 제품(승인된 발주 전송)의 경계 재작성
+- [x] 1.13a 저장소 조치 (구현 완료): 런타임 credential·세션·로그 파일 추적 해제, `.gitignore`, 전화번호 → 환경변수, `scripts/secret_scan.py` + pre-commit hook + 테스트, 노출 목록·영향·교체 절차 `docs/SECURITY.md`
+- [ ] 1.13b **credential 교체 (사용자 조치 대기)**: OpenClaw gateway 토큰, 기기 identity 키, operator 토큰을 gateway 기기에서 폐기·재발급 (`docs/SECURITY.md` 3절 순서). 공개 저장소라 파일 삭제만으로는 해결되지 않음
+- [ ] 1.13c Git 이력 재작성·force push: **하지 않음, 별도 확인 필요** (`docs/SECURITY.md` 4절)
+- [x] 1.14 정책 개정: `docs/SUPPLIER_CONTACT_POLICY.md` + `clawbot/policies/supplier_contact.py`(기본 disabled, 개발은 test_only, live는 이 빌드에서 거부). 대화형 agent의 공급업체 연락 금지는 유지
 
-Gate (테스트로 확인) — 코드 gate 통과 2026-10-20, 독립 리뷰 1회 반영. 1.13·1.14가 남아 CP1 전체는 `[~]`
+Gate (테스트로 확인) — 코드 gate 통과 2026-10-20, 독립 리뷰 1회 반영. **구현은 완료, credential 교체(1.13b)가 사용자 조치로 남아 CP1 전체는 `[~]`**
 
 - 다른 tenant의 객체 ID로 조회·변경 시 404/403
 - 같은 재고 이벤트 10회 → 수량 1회만 반영
@@ -145,39 +149,46 @@ CP3에서 미룬 것 (담당 CP)
 - "1,500"은 미국 기본값대로 천 단위로 읽음(다른 locale 지원 시 재검토) → CP14
 
 
-## CP4 — 첫 POS 커넥터 (기본 가설 Square) `[CON-01] [CON-02]` ⏳ 외부: 개발자 계정·앱 심사
+## [~] CP4 — 첫 POS 커넥터 (Square) `[CON-01] [CON-02]` — Sandbox 코드 완료, ⏳ Sandbox 실호출 검증은 사용자 계정 등록 후
 
-- [ ] 4.1 connector 공통 계약과 `capabilities` 선언(`sales_read, inventory_read, inventory_write, supplier_read, po_read, po_write`)
-- [ ] 4.2 OAuth: state binding, token 서버 암호화 보관, revoke/refresh
-- [ ] 4.3 위치 선택 (자동 합산 금지)
-- [ ] 4.4 backfill: catalog/variant/barcode, 판매 line, 취소·환불, 재고 상태 (90–365일 목표, 실제 범위 화면 표시)
-- [ ] 4.5 webhook: 서명 검증 → raw event 저장(CP1.10) → queue → 최신 상태 재조회 후 정규화 (순서 신뢰 안 함)
-- [ ] 4.6 변경분 polling + 야간 전체 대조
-- [ ] 4.7 POS가 반영한 재고에서 판매를 다시 차감하지 않음. POS 소유 위치는 `inventory_snapshots` 경로로만 갱신(Tabula 이동 원장은 거부됨, CP1.9b)
-- [ ] 4.8a 주문 key 방식 인계: CSV로 기록된 주문에 커넥터가 이후 줄(환불 등)을 붙일 때의 규칙(지금은 영구히 검토 대상이 됨, CP3 리뷰 2e)
-- [ ] 4.8 sales_lines: 커넥터는 `key_scheme=provider_line`. 같은 주문이 CSV로 이미 기록돼 있으면 `other_path`로 검토 대상(이미 구현된 주문 단위 검사, CP3). 어느 경로가 주문을 소유할지(예: 연결 시점 이전 = CSV, 이후 = 커넥터) 정책 확정
+Sandbox 개발과 App Marketplace 등재 심사는 별개다(`docs/SQUARE_SETUP.md`). 심사를 기다리지 않는다.
 
-Gate: 실제 계정 표본의 거래·재고·환불이 원본과 일치. webhook을 일부러 누락시켜도 polling으로 복원. 같은 webhook 10회 수신, 환불이 판매보다 먼저 도착하는 경우 통과.
+- [x] 4.1 connector 계약(`clawbot/connectors/base.py`)과 실제 지원 기준의 `capabilities` (CP4: sales/inventory/catalog read만)
+- [x] 4.2 OAuth: 단일 사용·10분 만료 state(교환 실패해도 재사용 불가), token Fernet 암호화 저장, revoke. production은 `TABULA_ENV=production`에서만
+- [ ] 4.2b access token refresh job
+- [x] 4.3 위치는 사람이 하나씩 연결(자동 합산 없음), 연결된 위치의 재고 소유자 = square
+- [x] 4.4 backfill: catalog(매핑 **제안**만, 미일치 상품은 사람이 adopt), 완료 주문 판매·환불(Square UID key), 재고 snapshot, 동기화 기간을 sales coverage로 기록
+- [x] 4.5 webhook: 서명 검증 → 원본 저장(event_id 중복 제거) → outbox job → Square 최신 상태 재조회
+- [ ] 4.6 변경분 polling + 야간 전체 대조 스케줄 (webhook 유실 복원) — 동기화 함수는 있음, 스케줄러 없음
+- [x] 4.7 POS 소유 위치는 snapshot 경로로만 갱신
+- [ ] 4.8a 주문 key 방식 인계: CSV로 기록된 주문에 커넥터가 이후 줄(환불 등)을 붙일 때의 규칙(지금은 검토 대상, CP3 리뷰 2e)
+- [x] 4.8 판매는 `key_scheme=provider_line`, 같은 주문이 CSV로 이미 있으면 이중 집계 없이 검토 대상
+- [x] 4.9 mock Square(`clawbot/connectors/square/mock.py`)로 전체 흐름 테스트, 재시도(429/5xx)·페이지네이션 포함
+
+Gate: 실제 계정 표본의 거래·재고·환불이 원본과 일치(**Sandbox 계정 필요 — 미검증**). webhook을 일부러 누락시켜도 polling으로 복원(4.6 미완). 같은 webhook 반복 수신 → 1회 처리(테스트 통과).
 
 ---
 
-## CP5 — 보충 엔진 (결정적 계산) `[PLAN-01]`
+## [~] CP5 — 보충 엔진 (결정적 계산) `[PLAN-01]` — 구현·리뷰 1회 반영, 재검증 대기
 
-- [ ] 5.1 일별 SKU 수요 집계(`sales_history.py` 확장), 판매 없는 기간과 품절 기간 구분
-- [ ] 5.2 기본 모델: 이동평균 + 요일 패턴 + merchant min/max, 간헐 수요는 긴 구간·수동 min/max
-- [ ] 5.3 `target_stock`, `inventory_position`, pack/MOQ 반올림 (명세 7.2)
-- [ ] 5.4 날짜별 projected stock → 입고 전 품절 구간 별도 표시
-- [ ] 5.5 제약: 영업일, 마감 시각, 배송 요일, 열린 PO(확정/미확정 구분), 최소 금액, 유통기한, 단종, 주간 budget
-- [ ] 5.6 `replenishment_plans`: 입력 cutoff, 모델·정책 version, 근거 (같은 입력 → 같은 결과)
-- [ ] 5.7 rolling-origin backtest 하네스: WAPE/MASE, 품절 일수, 평균 재고 가치, 주문 횟수 vs 단순 이동평균·기존 규칙
-- [ ] 5.8 LLM은 추천 **설명**만 생성, 수량·금액은 계산 서비스만
-- [ ] 5.9 기존 agent의 `while True` 루프에 최대 step·timeout·비용 상한
-- [ ] 5.10 `POST /v1/replenishment-runs`, `GET /v1/recommendations` (stale 표시)
-- [ ] 5.11 통화가 섞인 offer는 실행 전체를 중단하지 말고 해당 SKU를 예외 task로 (`cheapest_eligible`는 현재 예외를 던짐)
-- [ ] 5.12 미입고 주문 snapshot 의미: 파일별 `as_of`, 더 오래된 export가 새것을 덮지 않음, 새 export에서 빠진 줄(이미 입고)은 닫거나 표시 (CP3 리뷰 C2)
-- [ ] 5.13 실사 사이의 재고: 마지막 실사 − 이후 판매 + 입고, snapshot 출처 간 우선순위(POS > 수동 수입) 명시 (CP3 리뷰 C3)
+- [x] 5.1 일별 SKU 수요(위치 local 날짜), **coverage 기록으로 "판매 없음"과 "데이터 없음" 구분**, 0재고 snapshot 날은 평균에서 제외
+- [x] 5.2 이동평균 + 요일 패턴(4주 이상) + merchant min/max, 간헐 수요는 긴 구간 + 검토 표시
+- [x] 5.3 target/position/need, pack·multiple·MOQ 반올림 (`clawbot/domain/replenishment/engine.py`, LLM 없음)
+- [x] 5.4 날짜별 projected stock, 주문 있을 때/없을 때 품절일
+- [x] 5.5 공급업체 마감 시각·배송 요일·휴무, 열린 주문(확정/미확정/기한 지남/ETA 없음), 최소 금액·무료배송(표시만), 단종, 주간 budget(표시만)
+- [ ] 5.5b 매장 영업일, 유통기한, 보관 공간, 행사, 매장 간 이동 → CP13/CP14
+- [x] 5.6 run: cutoff, policy version, engine version, input digest, line별 입력 저장 → replay 동일. 같은 입력 = 같은 run, 위치당 current 1개, 과거 시점 run은 `historical`
+- [ ] 5.7 rolling-origin backtest 하네스 → CP0 실제 데이터 확보 후
+- [x] 5.8 LLM 미사용(수량·금액 전부 코드). 설명 생성은 CP10에서 선택
+- [x] 5.9 legacy agent 루프 상한(`clawbot/agents/limits.py`: step·시간)
+- [x] 5.10 `POST /v1/replenishment-runs`, `GET /v1/recommendations`(cutoff 기준 오래됨·새 데이터 표시)
+- [x] 5.11 통화 섞인 offer → `mixed_currency_offers` blocker
+- [x] 5.12 미입고 주문 파일: 기준 시각·완전 목록 여부 명시 필수, 오래된 보고는 덮어쓰기 불가, 완전 목록에서 빠진 줄 닫음
+- [x] 5.13 실사 사이 재고 = 마지막 실사 + 이후 다른 이동 − 이후 판매(환불은 되돌리지 않음), snapshot 우선순위 POS > 수동
 
-Gate: 명세 7.3 예시(18개, 일 6개, lead 4일, 주기 7일, safety 12, 12입 → 5상자, 1일 품절 구간) 및 boundary case 테스트 통과. scheduler와 수동 실행이 동시에 돌아도 계획 1개.
+Gate: 명세 7.3 예시(5상자, 품절 1일) 통과(엔진 단독 + import 경유). boundary: 납기 0일, 기한 지난 ETA, 계획 기간 밖 입고, 판매 데이터 공백, 실사 후 파손, 과거 시점 run, 공급업체 선택 — 테스트 통과. scheduler·수동 동시 실행 → 현재 계획 1개. **독립 리뷰 2차(재검증)는 리뷰 agent 사용 한도로 중단 — 재개 필요.**
+
+남은 한계(명시): 행이 기록된 transaction 시작 시각 기준이라 실행 직전에 시작해 직후 commit된 쓰기는 "새 데이터"로 표시되지 않을 수 있음 → CP11. 품절일 제외는 0재고 snapshot이 찍힌 날만 → 재고 이력 재구성은 CP5.x.
 
 ---
 

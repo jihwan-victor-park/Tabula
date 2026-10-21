@@ -72,6 +72,11 @@ _PERMISSIONS: dict[str, tuple[frozenset[str], bool, bool]] = {
     "import.upload": (frozenset({"owner", "manager", "bookkeeper"}), False, False),
     "import.draft_mapping": (frozenset({"owner", "manager", "bookkeeper"}), True, False),
     "import.confirm": (frozenset({"owner", "manager", "bookkeeper"}), False, False),
+    # A scheduler (system) may compute plans; only people change the policy.
+    "replenishment.run": (frozenset({"owner", "manager"}), False, True),
+    "replenishment.policy": (frozenset({"owner", "manager"}), False, False),
+    "connectors.manage": (frozenset({"owner", "manager"}), False, False),
+    "connectors.sync": (frozenset({"owner", "manager"}), False, True),
 }
 
 

@@ -7,6 +7,8 @@ then synthesizes a structured TrendReport.
 
 from __future__ import annotations
 
+from clawbot.agents.limits import agent_steps
+
 import json
 import os
 from typing import Any
@@ -267,7 +269,7 @@ def run_trend_agent(request: TrendRequest) -> TrendReport:
     raw_reasoning = ""
 
     # Agentic loop — keep going until the model stops using tools
-    while True:
+    for _step in agent_steps():  # bounded: max tool steps + total timeout
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=8192,
