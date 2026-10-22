@@ -6,6 +6,19 @@ import { api, loadSession, type Me, type PoDetail, type PoLine, type PoSummary }
 import { AfterSending } from './AfterSending';
 import { Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, StatusChip, money, num, when } from './kit';
 
+const PRICE_TYPE: Record<string, string> = { price_list: 'Price list', contract: 'Contract price', quote: 'Quote', invoice: 'From an invoice' };
+const OUTCOME: Record<string, string> = {
+  captured: 'Kept in test mode (not emailed)', refused: 'Not sent', blocked: 'Stopped before sending', failed: 'Not sent',
+  skipped: 'Skipped — the order changed', unknown: 'Outcome unknown',
+};
+const HISTORY: Record<string, string> = {
+  'po.drafted': 'Draft created', 'po.revised': 'Changed', 'po.submitted': 'Sent for approval', 'po.approved': 'Approved',
+  'po.test_sent': 'Kept in test mode (not emailed)', 'po.send_refused': 'Not sent', 'po.send_blocked': 'Stopped before sending',
+  'po.cancelled': 'Cancelled', 'po.reply_recorded': 'Supplier reply added', 'po.reply_applied': 'Supplier reply applied',
+  'po.change_decided': 'Change decided', 'po.received': 'Delivery recorded', 'po.issue_resolved': 'Issue resolved',
+  'po.send_reconciled': 'Send outcome checked', 'po.delivery_resolved': 'Delivery outcome recorded', 'po.reply_dismissed': 'Reply dismissed',
+};
+
 export function OrdersPage() {
   const session = loadSession();
   const pos = useQuery({
@@ -15,18 +28,18 @@ export function OrdersPage() {
   return (
     <OpsShell active="orders" title="Purchase orders" icon="receipt_long">
       <RequireSession>
-        <Notice tone="info">Sending is in <b>capture</b> mode: an approved order is stored in Tabula as a test message and is <b>not</b> delivered to the supplier.</Notice>
+        <Notice tone="info"><b>Test mode:</b> an approved order is kept in Tabula and <b>not</b> emailed to the supplier.</Notice>
         <Panel title="Orders">
           {pos.isLoading && <Loading />}
           <ErrorBox error={pos.error} onRetry={() => pos.refetch()} />
-          {pos.data?.length === 0 && <EmptyState icon="receipt_long" title="No purchase orders yet" body="Create drafts from the plan on the Today page."><Link className="text-[#E8654A] underline" to="/ops/today">Go to Today</Link></EmptyState>}
+          {pos.data?.length === 0 && <EmptyState icon="receipt_long" title="No purchase orders yet" body="Create drafts from the plan on the Today page."><Link className="text-[#E8654A] underline" to="/app/orders">Go to Today</Link></EmptyState>}
           <div className="overflow-x-auto">
             <table className="[&_td]:pr-3 [&_th]:pr-3 w-full min-w-[720px] text-[13px]">
               <thead><tr className="text-left text-[#5C7A8A]"><th className="py-2">Number</th><th>Supplier</th><th>Ship to</th><th>Status</th><th>Supplier</th><th className="text-right">Lines</th><th className="text-right">Items total</th><th>Updated</th></tr></thead>
               <tbody>
                 {pos.data?.map((p) => (
                   <tr key={p.id} className="border-t border-[#F1E4DA]">
-                    <td className="py-2"><Link className="font-medium text-[#E8654A] underline" to={`/ops/orders/${p.id}`}>{p.number}</Link></td>
+                    <td className="py-2"><Link className="font-medium text-[#E8654A] underline" to={`/app/orders/${p.id}`}>{p.number}</Link></td>
                     <td>{p.supplier}</td><td>{p.ship_to}</td>
                     <td><StatusChip status={p.status} />{p.needs_attention && <span className="ml-2 text-[12px] text-[#8A5A00]">notes</span>}</td>
                     <td className="text-[12px]">{p.sent_at ? (p.awaiting_reply ? <span className="text-[#8A5A00]">awaiting answer</span> : p.ack_status.replace('_', ' ')) : '—'}{p.open_issues ? <span className="ml-1 text-[#991B1B]">· {p.open_issues} issue(s)</span> : ''}</td>
@@ -71,7 +84,7 @@ export function OrderPage() {
 
   return (
     <OpsShell active="orders" title={po.data ? `Purchase order ${po.data.number}` : 'Purchase order'} icon="receipt_long"
-              actions={<Link className="text-[13px] text-[#5C7A8A] underline" to="/ops/orders">All orders</Link>}>
+              actions={<Link className="text-[13px] text-[#5C7A8A] underline" to="/app/orders/list">All orders</Link>}>
       <RequireSession>
         {po.isLoading && <Panel><Loading /></Panel>}
         <ErrorBox error={po.error} onRetry={() => po.refetch()} />
@@ -84,8 +97,8 @@ export function OrderPage() {
             <>
               <div className="flex flex-wrap items-center gap-3">
                 <StatusChip status={p.status} />
-                <span className="text-[12px] text-[#5C7A8A]">Revision {p.revision} · digest {p.digest.slice(0, 12)}… · this order's numbers checked at data v{p.data.checked_version} (its own check — the store plan on Today is separate)</span>
-                {p.captured_message && <span className="text-[12px] font-medium text-[#1D4ED8]">Captured in Tabula only (capture mode) — no supplier received this order. Supplier answers below are what you recorded.</span>}
+                <span className="text-[13px] text-[#5E6E78]" title={`Approval is tied to exactly this version (${p.digest.slice(0, 12)}…). Quantities checked against the store's data when the version was made.`}>{p.supplier} · version {p.revision}</span>
+                {p.captured_message && <span className="text-[13px] font-medium text-[#2C64A0]">Test mode: kept in Tabula, not emailed. Record the supplier's answer below when you have it.</span>}
               </div>
               {[save, submit, approve, refreshTerms, cancel].map((m, i) => <ErrorBox key={i} error={m.error} />)}
               {p.status === 'failed' && (
@@ -146,7 +159,7 @@ export function OrderPage() {
                           <td className="text-right font-mono">{num(l.base_qty)}</td>
                           <td className="text-right font-mono" title={l.price ? `${l.price.type}${l.price.source ? `, ${l.price.source}` : ''}, valid from ${when(l.price.valid_from)}` : ''}>
                             {money(l.unit_price, c.currency)}<div className="text-[11px] text-[#5C7A8A]">{l.price?.basis}</div>
-                            <div className="text-[11px] text-[#5C7A8A]">{l.price?.type}{l.price?.source ? ` · ${l.price.source}` : ''}</div>
+                            <div className="text-[11px] text-[#5C7A8A]">{PRICE_TYPE[l.price?.type ?? ''] ?? l.price?.type}{l.price?.source ? ` · ${l.price.source}` : ''}</div>
                           </td>
                           <td className="text-right font-mono">{money(l.line_total, c.currency)}</td>
                           <td className="text-[12px]">
@@ -177,7 +190,7 @@ export function OrderPage() {
                   {p.status === 'awaiting_approval' && (
                     <Button onClick={() => approve.mutate()} disabled={dirty || busy || role !== 'owner'} loading={approve.isPending}
                             title={role !== 'owner' ? 'Only the owner can approve' : `Approves revision ${p.revision} exactly as shown`}>
-                      Approve revision {p.revision} — {money(c.totals.estimated_total, c.currency)} to {c.supplier.order_email}
+                      Approve version {p.revision} — {money(c.totals.estimated_total, c.currency)} to {c.supplier.order_email}
                     </Button>
                   )}
                   {editable && <Button variant="danger" onClick={() => cancel.mutate()} disabled={busy} loading={cancel.isPending}>Cancel order</Button>}
@@ -189,8 +202,8 @@ export function OrderPage() {
               {p.progress && <AfterSending po={p} role={role} onChange={refresh} />}
 
               {p.captured_message && (
-                <Panel title="Test send result (captured, not delivered)">
-                  <div className="text-[13px]"><b>To:</b> {p.captured_message.to} · <b>Subject:</b> {p.captured_message.subject} · revision {p.captured_message.revision} · {when(p.captured_message.at)}</div>
+                <Panel title="Order email (kept in test mode — not sent)">
+                  <div className="text-[13px]"><b>To:</b> {p.captured_message.to} · <b>Subject:</b> {p.captured_message.subject} · version {p.captured_message.revision} · {when(p.captured_message.at)}</div>
                   <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[10px] bg-[#FDF5EF] p-3 text-[12px]">{p.captured_message.body}</pre>
                   <details className="mt-2 text-[12px]"><summary className="cursor-pointer">Attachment {p.captured_message.attachment_name}</summary>
                     <pre className="mt-1 overflow-auto rounded-[10px] bg-[#FDF5EF] p-3">{p.captured_message.attachment_csv}</pre></details>
@@ -201,16 +214,16 @@ export function OrderPage() {
                 <Panel title="Approvals and sends">
                   {p.approvals.length === 0 && p.send_attempts.length === 0 && <div className="text-[13px] text-[#5C7A8A]">Nothing yet.</div>}
                   <ul className="flex flex-col gap-1 text-[13px]">
-                    {p.approvals.map((a, i) => <li key={`a${i}`}>✓ Revision {a.revision} approved by {a.by} ({a.role}) · {when(a.at)} · {a.digest.slice(0, 10)}…</li>)}
-                    {p.send_attempts.map((s, i) => <li key={`s${i}`}>→ Revision {s.revision}: <b>{s.outcome}</b> ({s.mode}{s.recipient ? `, ${s.recipient}` : ''}) · {when(s.at)}<div className="text-[12px] text-[#5C7A8A]">{s.detail}</div></li>)}
+                    {p.approvals.map((a, i) => <li key={`a${i}`} title={`Approval fingerprint ${a.digest.slice(0, 12)}…`}>✓ Version {a.revision} approved by {a.by} ({a.role}) · {when(a.at)}</li>)}
+                    {p.send_attempts.map((s, i) => <li key={`s${i}`}>→ Version {s.revision}: <b>{OUTCOME[s.outcome] ?? s.outcome}</b>{s.recipient ? ` · ${s.recipient}` : ''} · {when(s.at)}<div className="text-[12px] text-[#5C7A8A]">{s.detail}</div></li>)}
                     {p.send_job && p.status === 'queued' && <li className="text-[#1D4ED8]">Send job: {p.send_job.status} (attempt {p.send_job.attempts})</li>}
                   </ul>
                 </Panel>
                 <Panel title="History">
                   <ul className="flex flex-col gap-1 text-[13px]">
-                    {p.history.map((h, i) => <li key={i}><span className="font-mono text-[12px] text-[#5C7A8A]">{when(h.at)}</span> {h.action.replace('po.', '')} — {h.by}{h.reason ? ` (${h.reason})` : ''}</li>)}
+                    {p.history.map((h, i) => <li key={i}><span className="font-mono text-[12px] text-[#5C7A8A]">{when(h.at)}</span> {HISTORY[h.action] ?? h.action.replace('po.', '').replace(/_/g, ' ')} — {h.by}{h.reason ? ` (${h.reason})` : ''}</li>)}
                   </ul>
-                  <div className="mt-2 text-[12px] text-[#5C7A8A]">Revisions: {p.revisions.map((r) => `#${r.revision} ${money(r.total)}`).join(' · ')}</div>
+                  <div className="mt-2 text-[12px] text-[#5C7A8A]">Versions: {p.revisions.map((r) => `v${r.revision} ${money(r.total)}`).join(' · ')}</div>
                 </Panel>
               </div>
             </>

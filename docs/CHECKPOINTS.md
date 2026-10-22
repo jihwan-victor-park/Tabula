@@ -322,6 +322,41 @@ Gate: 10상자 중 8 입고·1 손상·잔량 2 시나리오에서 잔량·재�
 - [x] 데모 매장 버튼(개발 모드 전용, 비개발 환경은 404): seed 출력에서 날짜를 찾아 넣는 절차 없이 계획부터 시작한다.
 - [x] Connections 화면: 연결 상태·환경(mock/sandbox)·토큰 만료·위치 연결·판매 원본 전환·동기화·재대조 이력·해제.
 
+## [~] Owner 앱 (가입 → 매장 → 데이터 → 재고 → 바코드 → 분석 → 발주 추천 → 승인) — 구현 완료 · 브라우저·API·DB 검증(합성 파일) · 실제 고객 미검증
+
+검증 단계: **구현 완료** = 코드·테스트 있음 / **mock 검증** = 가짜 외부 서비스로 확인 / **Sandbox 실호출** = 제공사 테스트 계정으로 확인 / **실제 고객** = 실제 매장 데이터·사용.
+
+| 영역 | 구현 | 브라우저·API·DB 확인 | Sandbox 실호출 | 실제 고객 | 남은 한계 |
+|---|---|---|---|---|---|
+| 계정·세션 (이메일+비밀번호, HttpOnly 쿠키, CSRF 헤더, 5회 실패 15분 잠금, 매장별 권한) | ✓ | ✓ | 해당 없음 | ✗ | 이메일 인증·비밀번호 재설정 없음. 팀 초대는 1회용 링크(14일, hash만 저장) — 링크 없이는 그 이메일로 가입 불가. 초대 메일 발송 없음(owner가 링크 전달) |
+| 데모 로그인 분리 (dev 모드 + loopback만, password 모드에서 거부) | ✓ | ✓ | 해당 없음 | — | |
+| 매장 생성 (이름·업종·시간대·통화 → 위치 생성 → 데이터 연결로 이동) | ✓ | ✓ | — | ✗ | |
+| 샘플 매장 (계정 소유, 어디서나 "sample" 표시, 실제 매장과 분리) | ✓ | ✓ | — | — | |
+| Excel/CSV 가져오기 (열 자동 매칭, 사용 안 하는 열과 이유, 필요한 질문만) | ✓ | ✓ | — | ✗ | |
+| Google Sheets (공개 공유 링크 1회 읽기, docs.google.com만, 리디렉트 검사) | ✓ | 테스트(가짜 전송)만 | ✗ 실제 시트 미확인 | ✗ | OAuth·정기 동기화 없음 |
+| Square 상태 표시 (정직한 "demo connection" / 필요한 설정 이름) | ✓ | ✓ (mock) | ✗ (U6) | ✗ | |
+| 데이터별 가능 기능 (재고 / 추세 ≥7일 / 발주 추천 ≥14일+재고 / 발주: 승인된 공급업체·단가·주소) | ✓ | ✓ | — | ✗ | |
+| 홈·재고 목록·품목 상세 (데이터 기준 시각, 24시간 넘으면 오래됨 표시, 추정치 표시) | ✓ | ✓ (데스크톱·휴대폰 폭) | — | ✗ | |
+| 바코드 (스캐너·입력, 카메라는 BarcodeDetector 지원 브라우저만, 동작·수량 선택 후에만 변경, 미등록 바코드 추가·연결, 기록·되돌리기, Square 소유 재고는 읽기 전용) | ✓ | ✓ | — | ✗ | 실제 스캐너 기기·휴대폰 카메라 미확인 |
+| 분석 (기간 비교는 데이터 있는 날 기준, 없는 날은 0이 아님, 잘 팔림/안 팔림, 품절 예상) | ✓ | ✓ | — | ✗ | |
+| 발주 추천 → 수량 수정 → 초안 (기존 엔진, 배수·최소 수량 서버 검사) → owner 승인 | ✓ | ✓ | — | ✗ | 전송은 test mode(capture) 유지 |
+
+- 완료 기준 경로(`scripts/ui_walkthrough_owner.py`): 새 계정 가입 → 매장 생성 → 자기 재고·판매 파일 → 재고 확인 → 바코드로 1건 조정 → 분석 → 공급업체 등록 → 발주 추천 수량 수정 → 초안 → 승인(test mode). 화면 `docs/screenshots/owner-app/01–24`.
+- 기존 흐름도 새 화면으로 다시 확인: `scripts/ui_walkthrough.py`(회신·입고·다른 매장 404·manager 승인 403), `scripts/ui_walkthrough_store.py`(샘플 매장·주문 번호 연결·Square demo 입고 대조).
+- 실제 공급업체 전송과 결제는 꺼져 있다. 새 커넥터·결제 기능은 추가하지 않았다.
+
+독립 리뷰 1회 반영 (owner 앱):
+- **blocker** 초대된 이메일을 먼저 가입한 사람이 매장 권한을 가져가던 문제 → 1회용 초대 링크(`invitations`, migration 0013). 링크 없이 store 권한이 있는 이메일로 가입하면 거부. owner 역할은 초대로 줄 수 없음.
+- 샘플 매장: 서버에서 계정당 1개, 동시에 1개만 생성, 실행마다 별도 임시 폴더, 모든 import가 끝난 뒤에만 소유권 이전(실패 시 반쪽 매장 없음), 데모 manager 추가 안 함, 시간 초과는 504 안내.
+- 수량 확인(count) 되돌리기가 재고를 부풀리고 "방금 확인"으로 보이던 문제 → count는 되돌리지 않고 다시 세도록 안내. 이후 count가 있는 변경도 되돌리기 거부.
+- 한 번도 센 적 없는 품목이 스캔 1건 후 "방금 확인"으로 보이던 문제 → `stock_counted` 노출, "not counted yet" 표시·오래됨 처리. readiness는 count·재고 보고서만 재고 데이터로 인정.
+- 같은 request_key에 다른 수량·동작 → 409(조용히 무시하지 않음).
+- 분석: 데이터가 완전하지 않은 날의 판매는 합계·그래프에서 제외. 가격 없는 판매가 하나라도 있으면 매출 미표시(개수 안내).
+- "Stock No." 같은 번호 열이 수량으로 자동 매칭되던 문제 → 느슨한 매칭은 식별자 필드에만.
+- Google Sheets: 10MB 넘으면 즉시 중단(스트리밍), https만, gid 숫자만, Google 로그인으로 리디렉트되면 "공개 공유 아님" 안내, 가져오는 동안 DB transaction을 열어 두지 않음.
+- 로그인 실패 메시지 통일(잠금이 계정 존재를 드러내지 않음). 세션 쿠키는 dev 모드 외에는 기본 Secure.
+- 남은 것: 샘플 매장은 여전히 별도 프로세스의 seed(외부에서 접근 불가한 in-process dev 인증)로 만든다. IP별 로그인 제한 없음(5회 실패 잠금만). 품목 상세 차트는 부분 데이터 날도 기록된 판매를 그대로 보여준다.
+
 ## CP9 — Invoice 대조 `[BILL-01]`
 
 - [ ] 9.1 전용 수신 주소 + 업로드로 invoice 수입 (Gmail 전체 inbox 접근은 하지 않음)
@@ -338,12 +373,12 @@ Gate: 같은 invoice가 이메일과 업로드로 두 번 들어와도 1건. 실
 
 ## CP10 — Owner 화면 `[UI-01]` (CP5부터 각 CP와 함께)
 
-- [~] 10.1 TanStack Query 도입, `data.ts`의 output JSON import 제거 → live API, demo fixtures는 별도 모드 — `/ops/*` 화면(Today·Imports·Orders·Workspace)은 live API로 완료(CP6), legacy 화면은 그대로
-- [ ] 10.2 메뉴: Today / Inventory / Orders / Suppliers / Bills / Connections, Settings
+- [~] 10.1 TanStack Query 도입, `data.ts`의 output JSON import 제거 → live API, demo fixtures는 별도 모드 — `/app/*` 매장주 화면 전부 live API(Owner 앱), legacy 화면은 `/legacy/*`에 그대로
+- [~] 10.2 메뉴: Home / Inventory / Scan / Insights / Orders / Suppliers / Data / Settings (Bills는 CP9 이후)
 - [ ] 10.3 `ActionChip`(이벤트 없는 span) → loading/disabled/success/error 버튼, 발주·지급은 낙관적 성공 표시 금지
 - [ ] 10.4 Today: 오늘 결정할 주문, 미확인 supplier, 늦은 입고, invoice 차이, stale/연결 끊김/budget 초과
 - [ ] 10.5 추천 상세: 근거 수치, 총 승인 금액, 수정 사유 선택
-- [ ] 10.6 모바일 카드+하단 승인, 데스크톱 고정 열+drawer, 접근성(키보드·focus·label)
+- [~] 10.6 모바일 카드+하단 승인, 데스크톱 고정 열+drawer, 접근성(키보드·focus·label) — 휴대폰 폭 하단 메뉴·카드 목록 완료, 접근성 점검은 미실시
 - [ ] 10.7 첫 화면에서 agent transcript, token 수, chain, raw JSON, confidence %, ecosystem 점수 제거
 - [ ] 10.8 simulation/YHack 화면은 `archive/demo`로 분리
 

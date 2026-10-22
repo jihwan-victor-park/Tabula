@@ -16,21 +16,30 @@ Layout: `clawbot/api/app.py` (single app) · `clawbot/api/v1/` (routers) · `cla
 
 In dev auth mode send `X-Dev-User: you@example.com`; every tenant-scoped call also needs `X-Tenant-Id`, which the server checks against your membership. Stock changes require an `Idempotency-Key` header. Dev auth is accepted only with `TABULA_ENV=development|test` and only from loopback clients without `X-Forwarded-For`.
 
-### Browser flow
+### Browser flow (owner app)
 
 ```bash
 (cd demo-ui && npm install)
 scripts/dev.sh            # migrates, starts API :8080, import / connector / PO workers, UI :5173
+scripts/restart_api.sh    # restart only the API after backend changes (same dev settings)
 ```
 
-Open http://127.0.0.1:5173/ops/setup, type any email, press **Continue**, then **Create a demo store** (development only):
-a fictional "Paws & Co (demo)" with suppliers, 28 days of sales, a stock count and an open order already imported.
-Then: **Today** (what needs attention, the plan and why) → **Create PO drafts** → order → submit → approve (owner) →
-supplier reply (paste / file / mock) → **Receiving** → **Connections** (Square: `mock` by default, Sandbox once configured).
+Open http://127.0.0.1:5173/signup and create an account (email + password, 10+ characters). Then:
 
-- Sending runs in **capture** mode: an approved order is stored in Tabula as a test message and never delivered.
-- `scripts/dev.sh --seed` also creates the demo workspace for `owner@pawsandco.example` (files in `var/demo/` not imported — the import screens suggest the dates).
-- Browser walkthroughs with screenshots: `scripts/ui_walkthrough.py` (order → reply → receipt, `docs/screenshots/cp7/`, needs a fresh `--seed` DB) and `scripts/ui_walkthrough_store.py` (owner path, `docs/screenshots/store-readiness/`). `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome.
+1. **Store setup** — name, what you sell, time zone, currency → straight to **Data**.
+2. **Data** — Excel/CSV upload or a shared Google Sheets link (Square: demo connection until Sandbox settings exist, see `docs/SQUARE_SETUP.md`). Columns are matched automatically; the review screen shows unused columns and why, and asks only what it must (e.g. "This was true at", the sales period).
+3. **Home / Inventory** — stock state, what runs out, sales trend, what's on the way; every number shows how old it is.
+4. **Scan** — USB/Bluetooth scanner or typing (camera where the browser supports it). A scan only finds the item; you pick stock in / sold or used / damaged / count and the quantity. Unknown barcodes can be added or attached to an item. Every change records who and why and can be undone. Stores whose stock is owned by Square are read-only here.
+5. **Insights** → **Orders** — run the order analysis, edit quantities, create drafts, owner approves.
+
+- **Test mode**: an approved order is kept in Tabula as a test message and never emailed. No payments.
+- **Sample store**: on "Your stores", *Create a sample store* builds a fictional pet shop owned by your account and marked as a sample everywhere.
+- **Team**: Settings → Invite gives the owner a one-time sign-up link to pass on (Tabula doesn't send email yet); without it nobody can sign up with that address.
+- Email-only **demo sign-in** exists only with `TABULA_AUTH_MODE=dev` on this machine (loopback); `TABULA_AUTH_MODE=password` turns it off. Not yet: email verification, password reset.
+- Browser walkthroughs (screenshots, `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome):
+  - `scripts/ui_walkthrough_owner.py` — sign up → own files → inventory → barcode → insights → supplier → draft → approve (`docs/screenshots/owner-app/`)
+  - `scripts/ui_walkthrough.py` — order → supplier reply → receiving (`docs/screenshots/cp7/`; seeds its own demo store)
+  - `scripts/ui_walkthrough_store.py` — sample store, export-order matching, Square (demo) receiving check (`docs/screenshots/store-readiness/`)
 - Square Sandbox: settings and the one-command check in `docs/SQUARE_SETUP.md` §6 (`scripts/square_sandbox_check.py`).
 - Real customer data: `docs/CUSTOMER_DATA_REQUEST.md` (what to ask for, `clawbot.devtools.anonymize`, `clawbot.devtools.compare_orders`). No customer data has been used yet.
 

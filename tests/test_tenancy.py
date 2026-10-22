@@ -22,7 +22,8 @@ def test_creator_becomes_owner(client):
     store = new_store(client, "alice@example.com", "Alice Pets")
     me = store.get("/v1/me").json()
     assert me["memberships"] == [
-        {"tenant_id": store.tenant_id, "tenant_name": "Alice Pets", "role": "owner"}
+        {"tenant_id": store.tenant_id, "tenant_name": "Alice Pets", "role": "owner",
+         "business_type": None, "currency": "USD", "is_sample": False}
     ]
 
 

@@ -87,10 +87,13 @@ def test_idempotency_key_required(store):
     assert api.post("/v1/inventory/movements", body).status_code == 422
 
 
-def test_zero_delta_rejected(store):
+def test_zero_delta_rejected_except_a_count_that_confirms_stock(store):
     api, _, variant_id, location_id = store
-    body = {"variant_id": str(variant_id), "location_id": str(location_id), "delta": "0", "reason": "count"}
+    body = {"variant_id": str(variant_id), "location_id": str(location_id), "delta": "0", "reason": "adjustment"}
     assert api.post("/v1/inventory/movements", body, headers={"Idempotency-Key": idem()}).status_code == 422
+    # A count that finds exactly what was expected is still a fresh reading.
+    body["reason"] = "count"
+    assert api.post("/v1/inventory/movements", body, headers={"Idempotency-Key": idem()}).status_code == 201
 
 
 def test_concurrent_distinct_movements_sum_exactly(store):

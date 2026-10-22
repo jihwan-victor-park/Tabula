@@ -23,7 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from clawbot.auth.auth0 import decode_token
-from clawbot.domain import tenancy
+from clawbot.domain import accounts, tenancy
 from clawbot.persistence.db import new_session
 from clawbot.persistence.models import User
 from clawbot.policies.permissions import Actor, allowed_roles, human
@@ -61,9 +61,15 @@ def auth_mode() -> str:
     loopback (enforced in get_current_user), so exposing the port does not expose it.
     """
     mode = os.getenv("TABULA_AUTH_MODE", "auth0")
+    if mode not in ("auth0", "password", "dev"):
+        raise RuntimeError(f"Unknown TABULA_AUTH_MODE {mode!r} (auth0 | password | dev)")
     if mode == "dev" and os.getenv("TABULA_ENV") not in DEV_ENVIRONMENTS:
         raise RuntimeError("TABULA_AUTH_MODE=dev requires TABULA_ENV=development (or test)")
     return mode
+
+
+SESSION_COOKIE = "tabula_session"
+CLIENT_HEADER = "x-tabula-client"  # cookie-authenticated changes must carry it (a custom header forces a CORS preflight)
 
 
 def get_current_user(
@@ -72,7 +78,21 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Security(_bearer),
     x_dev_user: str | None = Header(default=None),
 ) -> User:
-    if auth_mode() == "dev":
+    # 1. A signed-in browser (email + password account): works in every mode.
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        user = accounts.user_for_token(session, token)
+        if user is not None:
+            if request.method not in ("GET", "HEAD", "OPTIONS") and request.headers.get(CLIENT_HEADER) != "web":
+                raise HTTPException(status_code=403, detail="Missing client header")  # cross-site request forgery guard
+            return user
+        if not x_dev_user and credentials is None:
+            raise HTTPException(status_code=401, detail="Your session has ended; sign in again")
+    mode = auth_mode()
+    if mode == "password":
+        raise HTTPException(status_code=401, detail="Sign in required")
+    # 2. Demo sign-in by email only (development, this computer only).
+    if mode == "dev":
         client = request.client.host if request.client else None
         if client not in LOOPBACK_CLIENTS or _host_name(request.headers.get("host", "")) not in LOOPBACK_HOSTS or request.headers.get("x-forwarded-for"):
             raise HTTPException(status_code=403, detail="Dev sign-in only works from this computer")

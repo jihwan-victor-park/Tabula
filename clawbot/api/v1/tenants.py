@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from clawbot.api.deps import DbSession, TenantContext, get_current_user, get_tenant_context, require_permission
-from clawbot.domain import tenancy
+from clawbot.domain import accounts, tenancy
 from clawbot.persistence.models import User
 from clawbot.schemas.core import MemberOut, MemberSet, MeOut, TenantCreate, TenantMembershipOut
 
@@ -16,7 +19,8 @@ def _me(session: Session, user: User) -> MeOut:
         user_id=user.id,
         email=user.email,
         memberships=[
-            TenantMembershipOut(tenant_id=t.id, tenant_name=t.name, role=m.role)  # type: ignore[arg-type]
+            TenantMembershipOut(tenant_id=t.id, tenant_name=t.name, role=m.role, business_type=t.business_type,  # type: ignore[arg-type]
+                                currency=t.currency, is_sample=t.is_sample)
             for m, t in tenancy.list_memberships(session, user_id=user.id)
         ],
     )
@@ -59,3 +63,23 @@ def put_member(
     )
     user = session.get(User, membership.user_id)
     return MemberOut(user_id=membership.user_id, email=user.email if user else None, role=membership.role)  # type: ignore[arg-type]
+
+
+class InviteIn(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: Literal["manager", "receiver", "bookkeeper"]
+
+
+@router.post("/members/invite", status_code=201)
+def invite_member(
+    body: InviteIn,
+    session: Session = DbSession,
+    ctx: TenantContext = Depends(require_permission("members.manage")),
+) -> dict[str, Any]:
+    """
+    Give an email access (owner only). For someone without an account, returns a one-time `invite_token` —
+    shown once; the owner passes the link on. Without it nobody can sign up with that email.
+    """
+    token = accounts.invite(session, tenant_id=ctx.tenant_id, actor=ctx.actor, email=body.email, role=body.role)
+    return {"email": accounts.normalize_email(body.email), "role": body.role, "has_account": token is None,
+            "invite_token": token}

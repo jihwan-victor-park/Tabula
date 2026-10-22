@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from clawbot.api.deps import DbSession, TenantContext, get_tenant_context, require_permission
@@ -48,6 +49,31 @@ def post_import(
         session, tenant_id=ctx.tenant_id, actor=ctx.actor, kind=kind, file_name=file.filename or "upload",
         content=content, context=context,
     )
+    if not uploaded.created:
+        response.status_code = 200
+    return ImportOut.model_validate(uploaded.imp)
+
+
+class SheetImport(BaseModel):
+    url: str = Field(min_length=10, max_length=2000)
+    kind: ImportKind
+    location_id: uuid.UUID | None = None
+    supplier_id: uuid.UUID | None = None
+    source_system: SalesSource | None = None
+
+
+@router.post("/imports/google-sheet", response_model=ImportOut, status_code=201)
+def post_sheet_import(body: SheetImport, response: Response, session: Session = DbSession,
+                      ctx: TenantContext = Depends(require_permission("import.upload"))) -> ImportOut:
+    """Read a shared / published Google Sheet once as CSV, then review it like an uploaded file."""
+    from clawbot.domain.imports import google_sheets
+
+    session.commit()  # nothing written yet; don't hold a database transaction open while Google answers
+    file_name, content = google_sheets.fetch_csv(body.url)
+    context = {k: v for k, v in {"supplier_id": body.supplier_id, "location_id": body.location_id,
+                                 "source_system": body.source_system}.items() if v is not None}
+    uploaded = service.create_import(session, tenant_id=ctx.tenant_id, actor=ctx.actor, kind=body.kind,
+                                     file_name=file_name, content=content, context=context)
     if not uploaded.created:
         response.status_code = 200
     return ImportOut.model_validate(uploaded.imp)

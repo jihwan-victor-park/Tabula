@@ -3,11 +3,12 @@
 from fastapi import APIRouter
 
 from clawbot.api.v1 import (
-    audit, catalog, connectors, dev, fulfilment, imports, inventory, operations, purchasing, replenishment, suppliers,
+    audit, auth, catalog, connectors, dev, store, fulfilment, imports, inventory, operations, purchasing, replenishment, suppliers,
     tenants,
 )
 
 router = APIRouter(prefix="/v1")
+router.include_router(auth.router)
 router.include_router(tenants.router)
 router.include_router(catalog.router)
 router.include_router(suppliers.router)
@@ -18,5 +19,6 @@ router.include_router(connectors.router)
 router.include_router(purchasing.router)
 router.include_router(fulfilment.router)
 router.include_router(operations.router)
+router.include_router(store.router)
 router.include_router(dev.router)
 router.include_router(audit.router)

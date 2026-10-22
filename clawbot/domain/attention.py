@@ -62,10 +62,10 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
             ConnectorAccount.tenant_id == tenant_id, ConnectorLocationLink.location_id == location_id)):
         if acct.status != "active":
             out.append(_item("connection", "high", f"Square connection is {acct.status.replace('_', ' ')}",
-                             acct.last_error or "Square stopped accepting Tabula's access.", "Reconnect", "/ops/connections"))
+                             acct.last_error or "Square stopped accepting Tabula's access.", "Reconnect", "/app/data/square"))
         elif acct.last_error:
             out.append(_item("connection", "medium", "Square sync is failing", acct.last_error[:300], "Open connections",
-                             "/ops/connections"))
+                             "/app/data/square"))
 
     # --- inputs
     pending_imports = session.scalars(select(Import).where(Import.tenant_id == tenant_id, Import.status == "uploaded")).all()
@@ -73,7 +73,7 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
         if imp.context.get("location_id") not in (None, str(location_id)):
             continue  # another store's file
         out.append(_item("import", "medium", f"Review {imp.file_name}", "Uploaded but not confirmed; nothing from it is used yet.",
-                         "Review the file", "/ops/imports", ref=str(imp.id)))
+                         "Review the file", "/app/data/import", ref=str(imp.id)))
     location = session.get(Location, location_id)
     if location.inventory_write_owner == "tabula":
         last_stock = max(filter(None, [
@@ -92,7 +92,7 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                          f"Last stock reading{' from ' + location.inventory_write_owner if location.inventory_write_owner != 'tabula' else ''}: "
                          f"{_age(last_stock, now)}. Recommendations use it as the starting stock.",
                          "Upload a stock count" if location.inventory_write_owner == "tabula" else "Sync stock from the POS",
-                         "/ops/imports" if location.inventory_write_owner == "tabula" else "/ops/connections"))
+                         "/app/data/import" if location.inventory_write_owner == "tabula" else "/app/data/square"))
     last_sale = session.scalar(select(func.max(SalesLine.sold_at)).where(
         SalesLine.tenant_id == tenant_id, SalesLine.location_id == location_id))
     if last_sale is None or now - last_sale > SALES_STALE:
@@ -100,20 +100,20 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                          "No sales yet" if last_sale is None else "Sales are not up to date",
                          f"Latest sale recorded: {_age(last_sale, now)}. Demand is estimated from sales.",
                          "Sync sales from Square" if location.sales_feed == "square" else "Import sales or connect Square",
-                         "/ops/connections" if location.sales_feed == "square" else "/ops/imports"))
+                         "/app/data/square" if location.sales_feed == "square" else "/app/data/import"))
 
     # --- the plan
     run = session.scalars(select(ReplenishmentRun).where(
         ReplenishmentRun.tenant_id == tenant_id, ReplenishmentRun.location_id == location_id,
         ReplenishmentRun.status == "current")).one_or_none()
     if run is None:
-        out.append(_item("plan", "medium", "No plan yet", "Compute a plan once sales and a stock count are in.",
-                         "Compute plan", "/ops/today"))
+        out.append(_item("plan", "medium", "Run your first order analysis", "See what to order once sales and a stock count are in.",
+                         "Order suggestions", "/app/orders"))
     else:
         if run.data_version != data_version.current(session, tenant_id):
-            out.append(_item("plan", "medium", "Plan is out of date",
-                             "Stock, sales, orders or supplier answers changed after it was computed.",
-                             "Recompute plan", "/ops/today"))
+            out.append(_item("plan", "medium", "Order suggestions are out of date",
+                             "Stock, sales, orders or supplier answers changed since the last analysis.",
+                             "Run it again", "/app/orders"))
         for line in session.scalars(select(ReplenishmentLine).where(
                 ReplenishmentLine.run_id == run.id, ReplenishmentLine.status == "on_hold")):
             refs = [r["message"] for r in line.result.get("reasons", []) if r["code"] in ("unconfirmed_open_order",
@@ -121,14 +121,14 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                                                                                          "overdue_delivery")]
             out.append(_item("held", "medium", f"{skus.get(line.variant_id, '?')}: reorder on hold",
                              "Already ordered, but not confirmed or not arriving on schedule. " + " ".join(refs[:2]),
-                             "Record the supplier's answer", "/ops/orders"))
+                             "Record the supplier's answer", "/app/orders/list"))
 
     # --- orders
     for po in session.scalars(select(PurchaseOrder).where(
             PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.location_id == location_id,
             PurchaseOrder.status.in_(("awaiting_approval", "changes_proposed", "delivery_unknown", "failed", "test_sent",
                                       "supplier_confirmed", "partially_received")))):
-        href = f"/ops/orders/{po.id}"
+        href = f"/app/orders/{po.id}"
         if po.status == "awaiting_approval":
             out.append(_item("approve", "medium", f"{po.number} is waiting for the owner's approval", "", "Review and approve", href))
         elif po.status == "changes_proposed":
@@ -151,14 +151,14 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
             if overdue:
                 out.append(_item("late", "medium", f"{po.number}: delivery is late",
                                  f"{len(overdue)} line(s) were due by {min(l.eta for l in overdue).isoformat()}.",
-                                 "Record a delivery or the supplier's new date", f"/ops/receiving/{po.id}"))
+                                 "Record a delivery or the supplier's new date", f"/app/receiving/{po.id}"))
     for reply in session.scalars(select(SupplierReply).join(PurchaseOrder, (PurchaseOrder.tenant_id == SupplierReply.tenant_id) & (
             PurchaseOrder.id == SupplierReply.po_id)).where(
             SupplierReply.tenant_id == tenant_id, PurchaseOrder.location_id == location_id,
             SupplierReply.status == "pending_review")):
         out.append(_item("reply", "high", "A supplier reply is waiting for review",
                          "Nothing changes on the order until you confirm what the reply says.", "Review reply",
-                         f"/ops/orders/{reply.po_id}"))
+                         f"/app/orders/{reply.po_id}"))
 
     # --- receiving
     for rl, po_id in session.execute(select(ReceiptLine, Receipt.po_id).join(Receipt, (Receipt.tenant_id == ReceiptLine.tenant_id) & (
@@ -169,20 +169,20 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                          ("Entered in the POS; compare the POS readings and sign off." if rl.pos_status == "pos_reported"
                           else "Enter the delivery in the POS, then reconcile.")
                          + f" New orders for this item are blocked meanwhile. Received {_age(rl.created_at, now)}.",
-                         "Reconcile", f"/ops/receiving/{po_id}", ref=str(rl.id)))
+                         "Reconcile", f"/app/receiving/{po_id}", ref=str(rl.id)))
     for issue in session.scalars(select(ReceiptIssue).join(PurchaseOrder, (PurchaseOrder.tenant_id == ReceiptIssue.tenant_id) & (
             PurchaseOrder.id == ReceiptIssue.po_id)).where(
             ReceiptIssue.tenant_id == tenant_id, PurchaseOrder.location_id == location_id, ReceiptIssue.status == "open")):
         out.append(_item("damage", "low", "Damaged goods to settle with the supplier",
                          "Not counted as coming again until the supplier confirms a replacement.", "Resolve",
-                         f"/ops/receiving/{issue.po_id}"))
+                         f"/app/receiving/{issue.po_id}"))
 
     # --- possible duplicate orders between an export and Tabula
     for (supplier_id, number), link in open_orders.links(session, tenant_id=tenant_id, location_id=location_id).items():
         if link.status == "suggested":
             out.append(_item("link", "high", f"Is open order {number} the same as {', '.join(link.candidates)}?",
                              "The numbers nearly match. It is not counted until you decide.", "Decide",
-                             "/ops/today#links", supplier_id=str(supplier_id), external_po_number=number,
+                             "/app/orders#links", supplier_id=str(supplier_id), external_po_number=number,
                              candidates=list(link.candidates)))
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted(out, key=lambda i: order[i["severity"]])

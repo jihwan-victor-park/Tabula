@@ -61,7 +61,7 @@ def record_movement(
     delta = Decimal(delta)
     if delta != delta.quantize(QTY_SCALE):
         raise ValidationFailed("delta supports at most 4 decimal places")
-    if delta == 0:
+    if delta == 0 and reason != "count":
         raise ValidationFailed("delta must be non-zero")
     if reason not in MOVEMENT_REASONS:
         raise ValidationFailed(f"Unknown reason: {reason}")

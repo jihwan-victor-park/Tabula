@@ -24,7 +24,7 @@ export function ReceivingPage() {
           <ul className="flex flex-col gap-2">
             {list?.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-[#E8D4C6] px-4 py-3 text-[13px]">
-                <div><Link className="font-medium text-[#E8654A] underline" to={`/ops/receiving/${p.id}`}>{p.number}</Link> · {p.supplier} → {p.ship_to}
+                <div><Link className="font-medium text-[#E8654A] underline" to={`/app/receiving/${p.id}`}>{p.number}</Link> · {p.supplier} → {p.ship_to}
                   <div className="text-[12px] text-[#5C7A8A]">{p.expected_lines} line(s) expected{p.awaiting_reply ? ' · supplier has not confirmed everything' : ''}{p.open_issues ? ` · ${p.open_issues} open issue(s)` : ''}</div></div>
                 <StatusChip status={p.status} />
               </li>
@@ -72,7 +72,7 @@ export function ReceiveOrderPage() {
 
   return (
     <OpsShell active="receiving" title={po.data ? `Receive ${po.data.number}` : 'Receive'} icon="inventory_2"
-              actions={<Link className="text-[13px] text-[#5C7A8A] underline" to={`/ops/orders/${id}`}>Order</Link>}>
+              actions={<Link className="text-[13px] text-[#5C7A8A] underline" to={`/app/orders/${id}`}>Order</Link>}>
       <RequireSession>
         {po.isLoading && <Panel><Loading /></Panel>}
         <ErrorBox error={po.error} onRetry={() => po.refetch()} />

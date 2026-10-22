@@ -119,11 +119,20 @@ def _tenant_fk() -> Mapped[uuid.UUID]:
 # ---------------------------------------------------------------------------
 
 
+BUSINESS_TYPES = ("pet", "beauty", "toys", "grocery", "gift", "hardware", "other")
+
+
 class Tenant(Base):
+    """A store business (workspace). Its locations, catalog, suppliers and orders are private to it."""
+
     __tablename__ = "tenants"
 
     id: Mapped[uuid.UUID] = _pk()
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    business_type: Mapped[str | None] = mapped_column(String(30))
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD", server_default="USD")
+    # A fictional store to look around in; never mixed with a real store's data.
+    is_sample: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -133,6 +142,53 @@ class User(Base):
     id: Mapped[uuid.UUID] = _pk()
     auth_subject: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     email: Mapped[str | None] = mapped_column(String(320))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class UserCredential(Base):
+    """Email + password sign-in (auth_subject 'local|<email>'). scrypt hash; repeated failures lock the account briefly."""
+
+    __tablename__ = "user_credentials"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    password_hash: Mapped[str] = mapped_column(String(300), nullable=False)
+    failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class UserSession(Base):
+    """A signed-in browser. Only the token's sha256 is stored; the token lives in an HttpOnly cookie."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = _pk()
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+                                               nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Invitation(Base):
+    """
+    A one-time link that lets the person who holds it set a password for an invited email. Without it, signing
+    up with an email that already has store access is refused (there is no email verification in this build).
+    """
+
+    __tablename__ = "invitations"
+
+    id: Mapped[uuid.UUID] = _pk()
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
+                                               nullable=False, index=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -529,7 +585,8 @@ class InventoryMovement(Base):
         ForeignKeyConstraint(["tenant_id", "variant_id"], ["variants.tenant_id", "variants.id"]),
         ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
         CheckConstraint(_in("reason", MOVEMENT_REASONS), name="reason_valid"),
-        CheckConstraint("delta <> 0", name="delta_nonzero"),
+        # A count may confirm the stock as it is (delta 0): it still becomes the new, fresh stock reading.
+        CheckConstraint("delta <> 0 OR reason = 'count'", name="delta_nonzero"),
     )
 
     id: Mapped[uuid.UUID] = _pk()

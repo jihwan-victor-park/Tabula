@@ -77,9 +77,11 @@ SPECS: dict[str, KindSpec] = {
         context_required=("location_id",),
         one_of=(("sku", "barcode"),),
         fields=_ID_FIELDS + (
-            FieldSpec("quantity", "Quantity on hand", ("quantity", "qty", "on hand", "stock", "count", "in stock",
-                                                     "current quantity", "quantity on hand"), True),
-            FieldSpec("name", "Item name", ("name", "item name", "product name", "description", "item")),
+            FieldSpec("quantity", "Quantity on hand", ("quantity", "qty", "on hand", "on hand qty", "on hand quantity", "stock", "count", "in stock",
+                                                     "current quantity", "quantity on hand", "qty on hand", "available",
+                                                     "stock level", "units in stock", "inventory"), True),
+            FieldSpec("name", "Item name", ("name", "item name", "product name", "description", "item", "product",
+                                            "title", "item description")),
             FieldSpec("as_of", "Counted at", ("as of", "count date", "counted at", "timestamp", "date")),
         ),
     ),
@@ -205,7 +207,26 @@ def draft_columns(kind: str, header: list[str]) -> dict[str, str]:
                 columns[f.name] = column
                 used.add(column)
                 break
+    # Second, looser pass for identifier fields only: "Receipt #", "Order No.", "Transaction number" match
+    # "receipt", "order", "transaction". Never for amounts — "Stock No." is an item number, not a quantity.
+    by_loose = {_loose(h): h for h in header if h not in used}
+    for f in spec.fields:
+        if f.name in columns or f.name not in _IDENTIFIER_FIELDS:
+            continue
+        for synonym in f.synonyms:
+            column = by_loose.get(_loose(synonym))
+            if column and column not in used and _loose(synonym):
+                columns[f.name] = column
+                used.add(column)
+                break
     return columns
+
+
+_IDENTIFIER_FIELDS = frozenset({"sku", "barcode", "supplier_sku", "merchant_sku", "order_id", "line_id", "po_number"})
+
+
+def _loose(text: str) -> str:
+    return " ".join(t for t in _norm(text).replace("#", " ").split() if t not in ("no", "num", "number", "nbr"))
 
 
 # ---------------------------------------------------------------------------

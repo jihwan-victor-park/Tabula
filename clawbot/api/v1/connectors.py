@@ -55,6 +55,22 @@ def get_connectors(session: Session = DbSession, ctx: TenantContext = Depends(ge
     return [_account_view(session, a) for a in square.list_accounts(session, tenant_id=ctx.tenant_id)]
 
 
+@router.get("/connectors/square/status")
+def get_square_status(ctx: TenantContext = Depends(get_tenant_context)) -> dict[str, Any]:
+    """Can this server connect to Square right now, and if not, what is missing (setting names only)?"""
+    try:
+        cfg = square_config.load()
+    except Exception as exc:  # noqa: BLE001 — a bad setting is reported, not raised
+        return {"environment": None, "available": False, "missing": [str(exc)]}
+    missing = [name for name, value in (("SQUARE_APPLICATION_ID", cfg.application_id),
+                                        ("SQUARE_APPLICATION_SECRET", cfg.application_secret),
+                                        ("SQUARE_REDIRECT_URL", cfg.redirect_url)) if not value]
+    if not os.getenv("TABULA_TOKEN_ENCRYPTION_KEY"):
+        missing.append("TABULA_TOKEN_ENCRYPTION_KEY")
+    return {"environment": cfg.environment, "available": cfg.environment == "mock" or not missing,
+            "missing": [] if cfg.environment == "mock" else missing, "demo": cfg.environment == "mock"}
+
+
 OAUTH_COOKIE = "tabula_square_oauth"
 
 
@@ -84,7 +100,7 @@ def get_callback(request: Request, state: str, code: str | None = None, error: s
     if "text/html" in request.headers.get("accept", ""):
         # A person's browser coming back from Square: land on the Connections screen.
         ui = os.getenv("TABULA_UI_URL", "http://127.0.0.1:5173").rstrip("/")
-        return RedirectResponse(f"{ui}/ops/connections?connected={account.id}", status_code=303)
+        return RedirectResponse(f"{ui}/app/data/square?connected={account.id}", status_code=303)
     return _account_view(session, account)
 
 

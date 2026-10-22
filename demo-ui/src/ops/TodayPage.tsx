@@ -23,7 +23,7 @@ export function TodayPage() {
           <OpenOrderLinks locationId={session.locationId} />
           <Plan locationId={session.locationId} />
         </> : (
-          <Panel><EmptyState icon="location_on" title="Pick a store location" body="Choose the location to plan for."><Link className="text-[#E8654A] underline" to="/ops/setup">Workspace</Link></EmptyState></Panel>
+          <Panel><EmptyState icon="location_on" title="Pick a store location" body="Choose the location to plan for."><Link className="text-[#E8654A] underline" to="/app/stores">Workspace</Link></EmptyState></Panel>
         )}
       </RequireSession>
     </OpsShell>
@@ -42,7 +42,7 @@ function Plan({ locationId }: { locationId: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const draft = useMutation({
     mutationFn: () => api<PoSummary[]>('/purchase-orders/from-run', { body: { run_id: rec.data!.run!.id, variant_ids: selected.size ? [...selected] : null } }),
-    onSuccess: (pos) => { qc.invalidateQueries({ queryKey: ['pos'] }); navigate(pos.length === 1 ? `/ops/orders/${pos[0].id}` : '/ops/orders'); },
+    onSuccess: (pos) => { qc.invalidateQueries({ queryKey: ['pos'] }); navigate(pos.length === 1 ? `/app/orders/${pos[0].id}` : '/app/orders/list'); },
   });
 
   if (rec.isLoading) return <Panel><Loading label="Loading the plan…" /></Panel>;
@@ -144,7 +144,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LineDetail({ line }: { line: PlanLine }) {
+export function LineDetail({ line }: { line: PlanLine }) {
   return (
     <div className="grid gap-4 rounded-[12px] border border-[#F1E4DA] bg-white p-4 lg:grid-cols-2">
       <div>
@@ -153,7 +153,7 @@ function LineDetail({ line }: { line: PlanLine }) {
             <div className="rounded-[10px] bg-[#FDF5EF] p-2"><div className="text-[#5C7A8A]">Still needed</div><div className="font-mono text-[18px]">{num(line.need_before_held)}</div></div>
             <div className="rounded-[10px] bg-[#FFF8E1] p-2"><div className="text-[#5C7A8A]">Already requested, unconfirmed</div><div className="font-mono text-[18px]">{num(line.held_qty)}</div></div>
             <div className="rounded-[10px] bg-[#FEF3C7] p-2"><div className="text-[#5C7A8A]">Extra order</div><div className="text-[14px] font-semibold text-[#8A5A00]">On hold — confirm first</div>
-              <div className="mt-1 text-[11px]">Next: get the supplier's answer (or update your open-orders file); if it is a Tabula order, record their reply on <a className="underline" href="/ops/orders">Purchase orders</a>.</div></div>
+              <div className="mt-1 text-[11px]">Next: get the supplier's answer (or update your open-orders file); if it is a Tabula order, record their reply on <a className="underline" href="/app/orders/list">Purchase orders</a>.</div></div>
           </div>
         )}
         {line.arrival?.order_date && (

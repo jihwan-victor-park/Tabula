@@ -29,7 +29,7 @@ export function AttentionPanel({ locationId }: { locationId: string }) {
               <div className="font-medium">{a.title}</div>
               {a.why && <div className="text-[12px] text-[#5C7A8A]">{a.why}</div>}
             </div>
-            {a.href.startsWith('/ops/today#') ? <a className="whitespace-nowrap text-[#E8654A] underline" href="#links">{a.action}</a>
+            {a.href.startsWith('/app/orders#') ? <a className="whitespace-nowrap text-[#E8654A] underline" href="#links">{a.action}</a>
               : <Link className="whitespace-nowrap text-[#E8654A] underline" to={a.href}>{a.action} →</Link>}
           </li>
         ))}

@@ -22,6 +22,7 @@ import csv
 import io
 import os
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -96,9 +97,9 @@ def _csv(rows) -> str:
     return buf.getvalue()
 
 
-def write_samples(today) -> dict[str, Path]:
+def write_samples(today, out_dir: Path = OUT_DIR) -> dict[str, Path]:
     """Sales for the 28 full days before today, a count from an hour ago, one unconfirmed open order."""
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
     start = today - timedelta(days=28)
     sales = [["Date", "Transaction ID", "SKU", "Qty"]]
     for n in range(28):
@@ -107,9 +108,9 @@ def write_samples(today) -> dict[str, Path]:
             wobble = (-1, 0, 1, 0)[(n + i) % 4] if per_day > 1 else 0  # a little day-to-day noise, same average
             sales.append([f"{day.isoformat()}T{11 + i}:15:00", f"T-{day.isoformat()}-{i}", sku, str(per_day + wobble)])
     files = {
-        "sales": OUT_DIR / "sales_last_28_days.csv",
-        "inventory": OUT_DIR / "stock_count.csv",
-        "open_orders": OUT_DIR / "open_orders.csv",
+        "sales": out_dir / "sales_last_28_days.csv",
+        "inventory": out_dir / "stock_count.csv",
+        "open_orders": out_dir / "open_orders.csv",
     }
     files["sales"].write_text(_csv(sales))
     files["inventory"].write_text(_csv([["SKU", "Qty"], *[[sku, str(qty)] for sku, _, _, qty in ITEMS]]))
@@ -117,12 +118,14 @@ def write_samples(today) -> dict[str, Path]:
     return files
 
 
-def seed(apply_files: bool, owner: str = OWNER) -> None:
+def seed(apply_files: bool, owner: str = OWNER, sample_for: str | None = None) -> None:
     client = _client()
-    me = Api(client, owner)
-    tenant = me.call("POST", "/tenants", {"name": "Paws & Co (demo)"})
-    api = Api(client, owner, tenant["tenant_id"])
-    api.call("PUT", "/members", {"auth_subject": f"dev|{MANAGER}", "email": MANAGER, "role": "manager"})
+    builder = "sample-builder@tabula.local" if sample_for else owner
+    me = Api(client, builder)
+    tenant = me.call("POST", "/tenants", {"name": "Paws & Co (sample)" if sample_for else "Paws & Co (demo)"})
+    api = Api(client, builder, tenant["tenant_id"])
+    if not sample_for:  # a sample store belongs to one account; nobody else is added
+        api.call("PUT", "/members", {"auth_subject": f"dev|{MANAGER}", "email": MANAGER, "role": "manager"})
 
     loc = api.call("POST", "/locations", {"name": "Main St", "timezone": STORE_TZ})
     api.call("PUT", f"/locations/{loc['id']}/address", {
@@ -147,11 +150,15 @@ def seed(apply_files: bool, owner: str = OWNER) -> None:
     api.call("PUT", f"/replenishment/items/{variants['LITTER-20']}", {"location_id": loc["id"], "safety_stock": "12"})
 
     today = datetime.now(ZoneInfo(STORE_TZ)).date()
-    files = write_samples(today)
+    # A sample gets its own folder, so two being built at once never read each other's files.
+    files = write_samples(today, Path(tempfile.mkdtemp(prefix="tabula-sample-")) if sample_for else OUT_DIR)
     period = (today - timedelta(days=28), today - timedelta(days=1))
     count_as_of = datetime.now(timezone.utc) - timedelta(hours=1)
     if apply_files:
         _import_all(api, loc["id"], files, period, count_as_of)
+    if sample_for:  # only a complete store is handed over; a failed build stays with the builder, unseen
+        _hand_over(api, tenant["tenant_id"], sample_for, owner)
+        _remove_builder(tenant["tenant_id"])
 
     print(f"\nWorkspace  Paws & Co (demo)  tenant {tenant['tenant_id']}")
     print(f"Owner      {owner}   (approves orders)")
@@ -163,6 +170,30 @@ def seed(apply_files: bool, owner: str = OWNER) -> None:
     print(f"  Sales history  {files['sales']}  -> declare period {period[0]} to {period[1]}")
     print(f"  Stock count    {files['inventory']}  -> declare 'true at' {count_as_of.astimezone(ZoneInfo(STORE_TZ)):%Y-%m-%d %H:%M} (store time)")
     print(f"  Open orders    {files['open_orders']}  -> declare 'true at' now, quantities in base units, scope suppliers_in_file")
+
+
+def _hand_over(api: Api, tenant_id: str, subject: str, email: str) -> None:
+    """A sample store for a real account: that account owns it; it is marked as a sample; the builder leaves."""
+    from sqlalchemy import text
+
+    from clawbot.persistence.db import transaction
+
+    api.call("PUT", "/members", {"auth_subject": subject, "email": email, "role": "owner"})
+    with transaction() as s:
+        s.execute(text("UPDATE tenants SET is_sample = true, business_type = 'pet', currency = 'USD' WHERE id = :t"),
+                  {"t": tenant_id})
+    # Imports still run as the builder below; it is removed at the end (main).
+    api.sample_tenant = tenant_id
+
+
+def _remove_builder(tenant_id: str) -> None:
+    from sqlalchemy import text
+
+    from clawbot.persistence.db import transaction
+
+    with transaction() as s:
+        s.execute(text("DELETE FROM memberships WHERE tenant_id = :t AND user_id IN "
+                       "(SELECT id FROM users WHERE auth_subject = 'dev|sample-builder@tabula.local')"), {"t": tenant_id})
 
 
 def _import_all(api: Api, location_id: str, files, period, count_as_of) -> None:
@@ -208,11 +239,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument("--import", dest="apply_files", action="store_true", help="also import the sample files")
     parser.add_argument("--owner", default=OWNER, help="owner's email (dev sign-in)")
+    parser.add_argument("--sample-for", help="auth subject of an existing account that gets a marked sample store")
     args = parser.parse_args(argv)
     if os.getenv("TABULA_ENV") not in ("development", "test") or os.getenv("TABULA_AUTH_MODE") != "dev":
         print("seed_demo runs only with TABULA_ENV=development and TABULA_AUTH_MODE=dev", file=sys.stderr)
         return 2
-    seed(args.apply_files, args.owner)
+    seed(args.apply_files, args.owner, args.sample_for)
     return 0
 
 

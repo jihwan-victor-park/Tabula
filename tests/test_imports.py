@@ -40,13 +40,20 @@ def store(client):
 
 
 def _period_of(content: bytes) -> tuple[str, str] | None:
-    """Test helper: declare a sales file's period as the span of its own dates (a person would state it)."""
-    from datetime import date as _date
+    """
+    Test helper: declare a sales file's period as the span of its own dates (a person would state it).
+    Timestamps with an offset count on their date in the test store's time zone, as the import does.
+    """
+    from zoneinfo import ZoneInfo
+
+    def _local(c):
+        moment = datetime.fromisoformat(c)
+        return moment.astimezone(ZoneInfo("America/New_York")).date() if moment.tzinfo else moment.date()
 
     days = []
     for row in list(csv.reader(io.StringIO(content.decode("utf-8-sig"))))[1:]:
-        cell = row[0][:10] if row else ""
-        for parse in (lambda c: _date.fromisoformat(c), lambda c: datetime.strptime(c, "%m/%d/%Y").date()):
+        cell = row[0] if row else ""
+        for parse in (_local, lambda c: datetime.strptime(c[:10], "%m/%d/%Y").date()):
             try:
                 days.append(parse(cell))
                 break

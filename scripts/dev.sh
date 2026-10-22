@@ -37,5 +37,5 @@ done
 (cd demo-ui && npx vite --host 127.0.0.1 --port 5173 --strictPort) & pids+=($!)
 
 echo "API  http://127.0.0.1:8080/docs   logs in var/log/"
-echo "UI   http://127.0.0.1:5173/ops/setup  (sign in as owner@pawsandco.example after --seed)"
+echo "UI   http://127.0.0.1:5173/signup  (or Demo sign-in as owner@pawsandco.example after --seed)"
 wait

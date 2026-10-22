@@ -3,7 +3,9 @@
 
 const SESSION_KEY = 'tabula.session.v1';
 
-export type Session = { user: string; tenantId: string; tenantName: string; locationId?: string };
+// Which store this browser is working in. Who you are comes from the HttpOnly session cookie
+// (email + password account); `user` is set only for the email-only demo sign-in on a developer's machine.
+export type Session = { tenantId: string; tenantName: string; locationId?: string; isSample?: boolean; user?: string };
 
 export function loadSession(): Session | null {
   try {
@@ -19,7 +21,7 @@ export function saveSession(session: Session | null) {
     if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     else localStorage.removeItem(SESSION_KEY);
   } catch {
-    /* private mode: the session simply isn't remembered */
+    /* private mode: the store choice simply isn't remembered */
   }
 }
 
@@ -34,7 +36,7 @@ export class ApiError extends Error {
 }
 
 function headers(extra?: Record<string, string>, session = loadSession()): Record<string, string> {
-  const h: Record<string, string> = { ...extra };
+  const h: Record<string, string> = { 'X-Tabula-Client': 'web', ...extra };
   if (session?.user) h['X-Dev-User'] = session.user;
   if (session?.tenantId) h['X-Tenant-Id'] = session.tenantId;
   return h;
@@ -42,34 +44,39 @@ function headers(extra?: Record<string, string>, session = loadSession()): Recor
 
 async function handle<T>(res: Response): Promise<T> {
   const text = await res.text();
-  const body = text ? JSON.parse(text) : null;
+  let body: any = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = null; }
   if (!res.ok) {
     const detail = body?.detail;
-    const message = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((d) => d.msg).join('; ') : res.statusText;
+    const message = typeof detail === 'string' ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg).join('; ')
+      : res.status >= 500 ? 'Something went wrong on our side. Try again in a moment.' : res.statusText;
     throw new ApiError(res.status, message, body?.details);
   }
   return body as T;
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown; userOverride?: string } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; userOverride?: string; noTenant?: boolean } = {}): Promise<T> {
   const session = loadSession();
-  const h = headers({ 'Content-Type': 'application/json' }, init.userOverride ? { user: init.userOverride, tenantId: '', tenantName: '' } : session);
+  const h = headers(init.body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    init.userOverride ? { user: init.userOverride, tenantId: '', tenantName: '' } : init.noTenant ? { ...session!, tenantId: '' } as Session : session);
   const res = await fetch(`/v1${path}`, {
-    method: init.method ?? (init.body ? 'POST' : 'GET'),
+    method: init.method ?? (init.body !== undefined ? 'POST' : 'GET'),
     headers: h,
-    body: init.body ? JSON.stringify(init.body) : undefined,
+    credentials: 'same-origin',
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   return handle<T>(res);
 }
 
 export async function upload<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`/v1${path}`, { method: 'POST', headers: headers(), body: form });
+  const res = await fetch(`/v1${path}`, { method: 'POST', headers: headers(), body: form, credentials: 'same-origin' });
   return handle<T>(res);
 }
 
 // ---------------------------------------------------------------- types
 
-export type Me = { user_id: string; email: string; memberships: { tenant_id: string; tenant_name: string; role: string }[] };
+export type Membership = { tenant_id: string; tenant_name: string; role: string; business_type: string | null; currency: string; is_sample: boolean };
+export type Me = { user_id: string; email: string; memberships: Membership[] };
 export type Location = {
   id: string; name: string; timezone: string; inventory_write_owner: string;
   address_line1: string | null; city: string | null; region: string | null; postal_code: string | null; country: string | null;
@@ -206,3 +213,4 @@ export type ConnectorAccount = {
   locations: { external_location_id: string; location_id: string }[];
 };
 export type DevInfo = { environment: string; auth_mode: string; send_mode: string; square_environment: string };
+export type VariantLite = { id: string; sku: string; name: string; barcode: string | null; version: number; status: string };

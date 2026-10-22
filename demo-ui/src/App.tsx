@@ -1,50 +1,59 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { SignInPage, StoresPage, WelcomePage } from './app/Auth';
+import { DataPage, ImportPage } from './app/Data';
+import { HomePage } from './app/Home';
+import { InsightsPage } from './app/Insights';
+import { InventoryPage, ItemPage } from './app/Inventory';
+import { OrdersListPage, SuggestionsPage } from './app/Orders';
+import { ScanPage } from './app/Scan';
+import { SettingsPage } from './app/Settings';
+import { SupplierPage, SuppliersPage } from './app/Suppliers';
+import { ConnectionsPage } from './ops/ConnectionsPage';
+import { OrderPage } from './ops/OrdersPage';
+import { ReceiveOrderPage, ReceivingPage } from './ops/ReceivingPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { InventoryPage } from './pages/InventoryPage';
-import { OrdersPage } from './pages/OrdersPage';
-import { PriceScoutPage } from './pages/PriceScoutPage';
-import { SalesHistoryPage } from './pages/SalesHistoryPage';
-import { TrendsPage } from './pages/TrendsPage';
-import { ConnectionsPage } from './ops/ConnectionsPage';
-import { ImportsPage } from './ops/ImportsPage';
-import { OrderPage, OrdersPage as PurchaseOrdersPage } from './ops/OrdersPage';
-import { ReceiveOrderPage, ReceivingPage } from './ops/ReceivingPage';
-import { SetupPage } from './ops/SetupPage';
-import { TodayPage } from './ops/TodayPage';
 
 const SimulationPage = lazy(() => import('./simulation/SimulationPage'));
 
-export function App() {
+function LegacyOrder() {
+  const { id } = useParams();
+  return <Navigate to={`/app/orders/${id}`} replace />;
+}
 
+export function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/ops/today" replace />} />
-      <Route path="/ops" element={<Navigate to="/ops/today" replace />} />
-      <Route path="/ops/today" element={<TodayPage />} />
-      <Route path="/ops/imports" element={<ImportsPage />} />
-      <Route path="/ops/orders" element={<PurchaseOrdersPage />} />
-      <Route path="/ops/orders/:id" element={<OrderPage />} />
-      <Route path="/ops/receiving" element={<ReceivingPage />} />
-      <Route path="/ops/receiving/:id" element={<ReceiveOrderPage />} />
-      <Route path="/ops/connections" element={<ConnectionsPage />} />
-      <Route path="/ops/setup" element={<SetupPage />} />
-      <Route path="/dashboard" element={<DashboardPage />} />
-      <Route path="/agents" element={<AgentsPage />} />
-      <Route
-        path="/agentic-simulation"
-        element={
-          <Suspense fallback={<div style={{ color: '#1B3A4B', padding: 40 }}>Loading simulation…</div>}>
-            <SimulationPage />
-          </Suspense>
-        }
-      />
-      <Route path="/inventory" element={<InventoryPage />} />
-      <Route path="/orders" element={<OrdersPage />} />
-      <Route path="/sales-history" element={<SalesHistoryPage />} />
-      <Route path="/trends" element={<TrendsPage />} />
-      <Route path="/price-scout" element={<PriceScoutPage />} />
+      <Route path="/" element={<Navigate to="/app" replace />} />
+      <Route path="/signin" element={<SignInPage mode="signin" />} />
+      <Route path="/signup" element={<SignInPage mode="signup" />} />
+      <Route path="/app" element={<HomePage />} />
+      <Route path="/app/welcome" element={<WelcomePage />} />
+      <Route path="/app/stores" element={<StoresPage />} />
+      <Route path="/app/inventory" element={<InventoryPage />} />
+      <Route path="/app/inventory/:id" element={<ItemPage />} />
+      <Route path="/app/scan" element={<ScanPage />} />
+      <Route path="/app/insights" element={<InsightsPage />} />
+      <Route path="/app/orders" element={<SuggestionsPage />} />
+      <Route path="/app/orders/list" element={<OrdersListPage />} />
+      <Route path="/app/orders/:id" element={<OrderPage />} />
+      <Route path="/app/receiving" element={<ReceivingPage />} />
+      <Route path="/app/receiving/:id" element={<ReceiveOrderPage />} />
+      <Route path="/app/suppliers" element={<SuppliersPage />} />
+      <Route path="/app/suppliers/:id" element={<SupplierPage />} />
+      <Route path="/app/data" element={<DataPage />} />
+      <Route path="/app/data/import" element={<ImportPage />} />
+      <Route path="/app/data/square" element={<ConnectionsPage />} />
+      <Route path="/app/settings" element={<SettingsPage />} />
+      {/* earlier addresses */}
+      <Route path="/ops/*" element={<Navigate to="/app" replace />} />
+      <Route path="/ops/orders/:id" element={<LegacyOrder />} />
+      {/* hackathon prototype, kept for reference */}
+      <Route path="/legacy/dashboard" element={<DashboardPage />} />
+      <Route path="/legacy/agents" element={<AgentsPage />} />
+      <Route path="/legacy/simulation" element={<Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}><SimulationPage /></Suspense>} />
+      <Route path="*" element={<Navigate to="/app" replace />} />
     </Routes>
   );
 }

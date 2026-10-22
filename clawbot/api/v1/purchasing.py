@@ -22,6 +22,7 @@ router = APIRouter(tags=["purchase orders"])
 class FromRun(BaseModel):
     run_id: uuid.UUID
     variant_ids: list[uuid.UUID] | None = None
+    quantities: dict[uuid.UUID, Decimal] | None = Field(default=None, description="Your quantity per item, in order units")
 
 
 class RevisionRef(BaseModel):
@@ -133,7 +134,7 @@ def post_from_run(body: FromRun, session: Session = DbSession,
                   ctx: TenantContext = Depends(require_permission("po.draft"))) -> list[dict[str, Any]]:
     """One draft per supplier, ship-to and currency, from the current plan."""
     pos = purchasing.create_drafts_from_run(session, tenant_id=ctx.tenant_id, actor=ctx.actor, run_id=body.run_id,
-                                            variant_ids=body.variant_ids)
+                                            variant_ids=body.variant_ids, quantities=body.quantities)
     return [_summary(session, po) for po in pos]
 
 

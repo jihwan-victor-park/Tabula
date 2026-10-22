@@ -4,7 +4,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api, loadSession, type ConnectorAccount, type DevInfo, type Location } from './api';
-import { Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, StatusChip, when } from './kit';
+import { Badge, Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, when } from './kit';
+
+const SYNC_LABEL: Record<string, string> = { catalog: 'Refresh items', sales: 'Refresh sales', inventory: 'Refresh stock', reconcile: 'Re-check last 3 days' };
 
 export function ConnectionsPage() {
   const session = loadSession();
@@ -37,7 +39,7 @@ export function ConnectionsPage() {
         <Panel title="Square" aside={<Button onClick={() => connect.mutate()} loading={connect.isPending}>{accounts.data?.length ? 'Reconnect / connect another' : 'Connect Square'}</Button>}>
           {accounts.isLoading && <Loading />}
           <ErrorBox error={accounts.error ?? connect.error} onRetry={() => accounts.refetch()} />
-          {accounts.data?.length === 0 && <EmptyState icon="link" title="Not connected" body="Connect Square to read sales and stock automatically, or keep uploading files on Data imports." />}
+          {accounts.data?.length === 0 && <EmptyState icon="link" title="Not connected" body="Connect Square to read sales and stock automatically, or keep uploading files on the Data page." />}
           <div className="flex flex-col gap-4">
             {accounts.data?.map((a) => <Account key={a.id} a={a} onChange={refresh} />)}
           </div>
@@ -60,13 +62,13 @@ function Account({ a, onChange }: { a: ConnectorAccount; onChange: () => void })
   return (
     <div className="rounded-[12px] border border-[#E8D4C6] p-4 text-[13px]">
       <div className="flex flex-wrap items-center gap-2">
-        <b>{a.display_name ?? a.merchant_id}</b><StatusChip status={a.status === 'active' ? 'supplier_confirmed' : 'failed'} />
-        <span className="rounded bg-[#F1F1F1] px-2 text-[12px]">{a.environment}</span>
-        <span className="text-[12px] text-[#5C7A8A]">token valid until {when(a.token_expires_at)}{a.sync_state.token_refreshed_at ? ` · refreshed ${when(a.sync_state.token_refreshed_at)}` : ''}</span>
+        <b>{a.display_name ?? a.merchant_id}</b>{a.status === 'active' ? <Badge tone="good">Connected</Badge> : <Badge tone="bad">Needs reconnecting</Badge>}
+        <Badge tone={a.environment === 'production' ? 'neutral' : 'info'}>{a.environment === 'mock' ? 'Demo connection' : a.environment === 'sandbox' ? 'Square test account' : 'Square'}</Badge>
+        <span className="text-[12px] text-[#5C7A8A]">access valid until {when(a.token_expires_at)}{a.sync_state.token_refreshed_at ? ` · renewed ${when(a.sync_state.token_refreshed_at)}` : ''}</span>
       </div>
       {a.status !== 'active' && <Notice>Square no longer accepts this connection ({a.status.replace('_', ' ')}). Reconnect above; location links and history are kept.</Notice>}
       {a.last_error && <div className="mt-1 text-[12px] text-[#991B1B]">Last error: {a.last_error}</div>}
-      <div className="mt-1 text-[12px] text-[#5C7A8A]">Last successful sync {when(a.last_success_at)} · sales synced through {when(a.sync_state.sales_synced_through)} · runs every 15 min (sales), 30 min (stock), nightly reconciliation of the last 3 days</div>
+      <div className="mt-1 text-[12px] text-[#5C7A8A]">{a.last_success_at ? `Last successful sync ${when(a.last_success_at)}` : 'Not synced yet'}{a.sync_state.sales_synced_through ? ` · sales read through ${when(a.sync_state.sales_synced_through)}` : ''} · runs every 15 min (sales), 30 min (stock), nightly reconciliation of the last 3 days</div>
 
       <div className="mt-3 font-semibold">Locations</div>
       <ul className="mt-1 flex flex-col gap-2">
@@ -90,7 +92,7 @@ function Account({ a, onChange }: { a: ConnectorAccount; onChange: () => void })
       <ErrorBox error={link.error} />
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {['catalog', 'sales', 'inventory', 'reconcile'].map((k) => <Button key={k} variant="secondary" onClick={() => sync.mutate(k)} loading={sync.isPending && sync.variables === k} disabled={a.status !== 'active'}>Sync {k}</Button>)}
+        {['catalog', 'sales', 'inventory', 'reconcile'].map((k) => <Button key={k} variant="secondary" onClick={() => sync.mutate(k)} loading={sync.isPending && sync.variables === k} disabled={a.status !== 'active'}>{SYNC_LABEL[k]}</Button>)}
         <Button variant="danger" onClick={() => disconnect.mutate()} loading={disconnect.isPending} disabled={a.status === 'revoked'}>Disconnect</Button>
       </div>
       <ErrorBox error={sync.error ?? disconnect.error} />

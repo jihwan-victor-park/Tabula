@@ -375,7 +375,32 @@ def preview(session: Session, *, tenant_id: uuid.UUID, import_id: uuid.UUID, lim
         "rows": [_with_candidates(session, tenant_id, r) for r in sample],
         "more_errors": [_with_candidates(session, tenant_id, r) for r in errors],
         "suggested_settings": _suggestions(session, imp, ev),
+        "unused_columns": _unused(imp),
     }
+
+
+_KNOWN_UNUSED = (
+    (("cost", "unit cost", "case cost", "wholesale"), "Cost is read from supplier price lists — upload one per supplier to use it"),
+    (("supplier", "vendor", "distributor"), "Suppliers are set up per supplier (with their price list), not from this file"),
+    (("price", "retail", "msrp", "sell price"), "Selling prices are not needed for stock or order suggestions"),
+    (("category", "brand", "department", "type"), "Not used yet"),
+)
+
+
+def _unused(imp: Import) -> list[dict[str, str]]:
+    """Columns this import will not read, with why — so nothing is silently ignored."""
+    mapped = set(imp.mapping.get("columns", {}).values())
+    out = []
+    for header in imp.header:
+        if header in mapped or not header.strip():
+            continue
+        low = header.strip().lower()
+        if imp.kind == "sales" and any(w in low for w in ("item", "name", "product", "description", "title")):
+            why = "Item names come from your stock file; sales are matched by SKU or barcode"
+        else:
+            why = next((reason for words, reason in _KNOWN_UNUSED if any(w in low for w in words)), "Not used by this kind of file")
+        out.append({"column": header, "why": why})
+    return out
 
 
 def _suggestions(session: Session, imp: Import, ev: Evaluation) -> dict[str, Any]:

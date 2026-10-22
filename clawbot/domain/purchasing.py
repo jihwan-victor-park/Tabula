@@ -303,7 +303,8 @@ def _moved(content: dict[str, Any], by_variant: dict[uuid.UUID, ReplenishmentLin
 
 
 def create_drafts_from_run(session: Session, *, tenant_id: uuid.UUID, actor: Actor, run_id: uuid.UUID,
-                           variant_ids: list[uuid.UUID] | None = None) -> list[PurchaseOrder]:
+                           variant_ids: list[uuid.UUID] | None = None,
+                           quantities: dict[uuid.UUID, Decimal] | None = None) -> list[PurchaseOrder]:
     """Group the plan's order lines into one draft per (supplier, location, currency)."""
     authorize(actor, "po.draft")
     run = replenishment.get_run(session, tenant_id=tenant_id, run_id=run_id)
@@ -334,8 +335,15 @@ def create_drafts_from_run(session: Session, *, tenant_id: uuid.UUID, actor: Act
                            run_id=run.id, data_version=version, created_by_user_id=actor.user_id)
         session.add(po)
         session.flush()
-        specs = [{"supplier_item_id": str(l.supplier_item_id), "sku": skus.get(l.variant_id, "?"),
-                  "order_qty": f"{l.order_qty.normalize():f}", "recommendation": _recommendation(l)} for l in group]
+        specs = []
+        for l in group:
+            qty = (quantities or {}).get(l.variant_id, l.order_qty)  # the person's quantity, in order units
+            item = suppliers.get_supplier_item(session, tenant_id=tenant_id, item_id=l.supplier_item_id)
+            if qty <= 0 or qty % item.order_multiple != 0 or qty < item.min_order_qty:
+                raise ValidationFailed(f"{skus.get(l.variant_id, '?')}: order in multiples of {item.order_multiple.normalize():f} "
+                                       f"{item.order_uom}, minimum {item.min_order_qty.normalize():f}")
+            specs.append({"supplier_item_id": str(l.supplier_item_id), "sku": skus.get(l.variant_id, "?"),
+                          "order_qty": f"{qty.normalize():f}", "recommendation": _recommendation(l)})
         _add_revision(session, po, build_content(session, po, specs), actor, "Drafted from replenishment plan")
         audit.record(session, tenant_id=tenant_id, actor=actor, action="po.drafted", object_type="purchase_order",
                      object_id=po.id, after={"number": po.number, "run_id": str(run.id), "lines": len(group)})

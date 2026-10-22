@@ -27,6 +27,9 @@ class TenantMembershipOut(BaseModel):
     tenant_id: uuid.UUID
     tenant_name: str
     role: Role
+    business_type: str | None = None
+    currency: str = "USD"
+    is_sample: bool = False
 
 
 class MeOut(BaseModel):
