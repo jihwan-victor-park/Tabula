@@ -1,0 +1,129 @@
+/*
+  Tabula homepage tokens.
+
+  Colors, type, and motion for the front face live here.
+  Component CSS references these variables.
+
+  Motion timings:
+  --hf-duration-fast     hover and color, 160ms
+  --hf-duration-slide    phase, dialog, and sheet swaps, 220ms
+  --hf-duration-hero     first-load entrance, 260ms
+  --hf-duration-fill     button circle bloom, 420ms
+  --hf-duration-enter    scroll reveals, 420ms
+  --hf-duration-phase    purchasing-plan cycle, 3600ms
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root {
+  --hf-white: #ffffff;
+  --hf-canvas: #f3f5f7;
+  --hf-surface: #ffffff;
+  --hf-buffer: #e5e9ed;
+  --hf-buffer-deep: #d5dbe1;
+
+  --hf-ink: #101820;
+  --hf-ink-soft: #1b2832;
+  --hf-muted: #3c4c58;
+  --hf-faint: #5c6e7a;
+  --hf-quiet: #6a7882;
+
+  --hf-line: #e1e6eb;
+  --hf-line-strong: #cfd6dc;
+  --hf-signal: #e25b3a;
+  --hf-danger: #9d2c2c;
+
+  --hf-stage-ink: #f7f4f1;
+  --hf-stage-muted: #b7c4cc;
+  --hf-stage-faint: #8ea0ab;
+  --hf-stage-line: rgba(255, 255, 255, 0.12);
+  --hf-stage-raise: #1a2833;
+  --hf-stage-signal: #ffb4a2;
+
+  --hf-opacity-clear: 0;
+  --hf-opacity-solid: 1;
+  --hf-opacity-nav: 84%;
+  --hf-opacity-overlay: 46%;
+  --hf-opacity-disabled: 0.42;
+
+  --hf-nav-buffer: color-mix(in srgb, var(--hf-buffer) var(--hf-opacity-nav), transparent);
+  --hf-nav-edge: color-mix(in srgb, var(--hf-buffer-deep) 80%, transparent);
+  --hf-overlay: color-mix(in srgb, var(--hf-ink) var(--hf-opacity-overlay), transparent);
+  --hf-scrim: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--hf-canvas) 92%, transparent) 0%,
+    color-mix(in srgb, var(--hf-canvas) 70%, transparent) 58%,
+    color-mix(in srgb, var(--hf-canvas) 0%, transparent) 100%
+  );
+  --hf-shadow-float: 0 10px 28px color-mix(in srgb, var(--hf-ink) 8%, transparent);
+  --hf-shadow-stage: 0 28px 70px color-mix(in srgb, var(--hf-ink) 18%, transparent);
+  --hf-shadow-dialog: 0 30px 80px color-mix(in srgb, var(--hf-ink) 22%, transparent);
+
+  --hf-font-sans: 'Geist', 'Avenir Next', sans-serif;
+  --hf-font-display: var(--hf-font-sans);
+  --hf-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --hf-weight-regular: 400;
+  --hf-weight-medium: 500;
+  --hf-weight-display: 600;
+
+  --hf-text-kicker: 0.72rem;
+  --hf-text-xs: 0.8125rem;
+  --hf-text-sm: 0.9375rem;
+  --hf-text-base: 1.0625rem;
+  --hf-text-md: 1.2rem;
+  --hf-text-lg: 1.45rem;
+  --hf-text-xl: clamp(1.65rem, 2.2vw, 2.05rem);
+  --hf-text-2xl: clamp(2.35rem, 4vw, 3.45rem);
+  --hf-text-display: clamp(2.15rem, 4.8vw, 4.35rem);
+
+  --hf-measure: 38rem;
+  --hf-leading-display: 0.98;
+  --hf-leading-tight: 1.12;
+  --hf-leading-snug: 1.35;
+  --hf-leading-body: 1.55;
+  --hf-tracking-display: -0.045em;
+  --hf-tracking-tight: -0.022em;
+  --hf-tracking-nav: -0.011em;
+  --hf-tracking-kicker: 0.16em;
+
+  --hf-space-3xs: 0.25rem;
+  --hf-space-2xs: 0.4rem;
+  --hf-space-xs: 0.65rem;
+  --hf-space-sm: 0.9rem;
+  --hf-space-md: 1.15rem;
+  --hf-space-lg: 1.6rem;
+  --hf-space-xl: 2.4rem;
+  --hf-space-2xl: 4.25rem;
+  --hf-space-3xl: 7rem;
+  --hf-gutter: clamp(1.75rem, 6vw, 5.5rem);
+
+  --hf-radius-sm: 0.8rem;
+  --hf-radius-md: 1.2rem;
+  --hf-radius-lg: 1.6rem;
+  --hf-radius-pill: 999px;
+  --hf-border: 1px;
+
+  --hf-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --hf-ease-liquid: cubic-bezier(0.19, 1, 0.22, 1);
+  --hf-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --hf-duration-fast: 160ms;
+  --hf-duration-slide: 220ms;
+  --hf-duration-hero: 260ms;
+  --hf-duration-fill: 420ms;
+  --hf-duration-enter: 420ms;
+  --hf-duration-field: 900ms;
+  --hf-duration-drift: 18s;
+  --hf-duration-phase: 3600ms;
+  --hf-stagger: 48ms;
+  --hf-stagger-hero: 32ms;
+  --hf-fill-scale: 32;
+  --hf-dot: 0.42rem;
+
+  --hf-page: 76rem;
+  --hf-header-height: 5rem;
+  --hf-header-stacked: 8rem;
+  --hf-nav-blur: 16px;
+  --hf-z-header: 20;
+  --hf-z-dialog: 40;
+}
