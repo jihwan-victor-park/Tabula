@@ -63,7 +63,7 @@ def main() -> None:
         sign_in(page, OWNER)
         shot(page, out, "01_workspace")
         page.goto(f"{UI}/app/orders/list")
-        expect(page.get_by_text("No orders yet")).to_be_visible(timeout=15000)
+        expect(page.get_by_text("Nothing to review")).to_be_visible(timeout=15000)
         shot(page, out, "01b_orders_empty")
 
         # 1. Imports through the review screen (declared meaning is restated by the person).
@@ -74,31 +74,30 @@ def main() -> None:
         import_file(page, "inventory", SAMPLES / "stock_count.csv", {"This was true at": count_at})
         import_file(page, "open_orders", SAMPLES / "open_orders.csv", {
             "This was true at": now, "Quantities are counted in": "base", "This file lists": "suppliers_in_file"})
-        page.goto(f"{UI}/app/data")
+        page.goto(f"{UI}/app/settings/data")
         shot(page, out, "03_imports_applied")
 
         # 2. Plan.
-        page.goto(f"{UI}/app/orders")
-        page.get_by_role("button", name=re.compile("Run order analysis|Run again")).click()
-        expect(page.get_by_text("Suggested orders")).to_be_visible(timeout=30000)
+        page.goto(f"{UI}/app/orders/plan")  # works the plan out on opening when there is none yet
+        expect(page.get_by_text("Drafts to create")).to_be_visible(timeout=30000)
         shot(page, out, "04_plan")
         row = page.locator("tr", has_text="LITTER-20").first
         row.get_by_role("button", name="Why?").click()
         shot(page, out, "05_plan_why_litter")
         row.get_by_role("button", name="Hide").click()
-        page.locator("li", has_text="CATFOOD-3").first.get_by_role("button", name="Details").click()
+        page.locator("li", has_text="Salmon cat food").first.get_by_role("button", name="Details").click()
         shot(page, out, "06_plan_on_hold_catfood")
 
         # 3. Drafts, one per supplier.
         page.get_by_role("button", name=re.compile("Create .* order draft")).click()
         expect(page.get_by_text(re.compile("PO-00001")).first).to_be_visible(timeout=15000)
         shot(page, out, "07_po_list_drafts")
-        page.get_by_role("link", name=re.compile("Phillips")).click()
-        expect(page.get_by_text("Lines")).to_be_visible()
+        page.get_by_role("cell", name=re.compile("Phillips")).first.click()
+        expect(page.get_by_role("heading", name="Items")).to_be_visible()
         shot(page, out, "08_po_draft")
-        page.get_by_role("button", name="Basis").first.click()
+        page.get_by_text("How the quantities were worked out").click()
         shot(page, out, "08b_po_line_basis")
-        page.get_by_role("button", name="Hide basis").click()
+        page.get_by_text("How the quantities were worked out").click()
 
         # 4. Edit a quantity -> new revision.
         page.get_by_label("Quantity for line 1").fill("8")
@@ -121,7 +120,7 @@ def main() -> None:
 
         # 6. A manager can submit but cannot approve (button disabled; server answers 403).
         page.goto(f"{UI}/app/orders/list")
-        coastal = page.get_by_role("link", name=re.compile("Coastal"))
+        coastal = page.get_by_role("cell", name=re.compile("Coastal")).first
         coastal.click()
         page.get_by_role("button", name="Submit for approval").click()
         expect(page.get_by_role("button", name=re.compile("Approve version"))).to_be_visible(timeout=15000)
@@ -155,9 +154,9 @@ def main() -> None:
         shot(page, out, "15_reply_applied_inbound")
 
         # 8. The store plan now counts the confirmed 6 cases as arriving and drops the 2 that won't come.
-        page.goto(f"{UI}/app/orders")
-        page.get_by_role("button", name=re.compile("Run again|Run order analysis")).click()
-        page.wait_for_timeout(1500)
+        page.goto(f"{UI}/app/orders/plan")  # out of date → worked out again on opening
+        expect(page.get_by_text("Worked out")).to_be_visible(timeout=30000)
+        page.wait_for_timeout(2500)
         page.locator("tr", has_text="LITTER-20").first.get_by_role("button", name="Why?").click()
         shot(page, out, "16_plan_after_partial_acceptance")
 
@@ -184,9 +183,9 @@ def main() -> None:
         assert repeat == [200, "5", 1]
 
         # 10. Recompute: the plan sees 4 sellable cases added to stock and 1 case still expected.
-        page.goto(f"{UI}/app/orders")
-        page.get_by_role("button", name=re.compile("Run again|Run order analysis")).click()
-        page.wait_for_timeout(1500)
+        page.goto(f"{UI}/app/orders/plan")  # out of date → worked out again on opening
+        expect(page.get_by_text("Worked out")).to_be_visible(timeout=30000)
+        page.wait_for_timeout(2500)
         page.locator("tr", has_text="LITTER-20").first.get_by_role("button", name="Why?").click()
         shot(page, out, "19_plan_after_receipt")
 

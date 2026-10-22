@@ -1,12 +1,31 @@
-// Settings: the store, its delivery address (needed on orders), the team, and test mode.
+// Settings: the store (details, delivery address, test mode), where its data comes from, and the team.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api, loadSession, type Location } from '../ops/api';
-import { Badge, Button, ErrorBox, Field, Notice, OpsShell, Panel, RequireSession, inputCls, useMe } from '../ops/kit';
+import { Badge, Button, ErrorBox, Field, Notice, OpsShell, PageTabs, Panel, RequireSession, TestModeTag, inputCls, useMe } from '../ops/kit';
+
+export function SettingsTabs({ active }: { active: 'store' | 'data' | 'team' }) {
+  return <PageTabs active={active} items={[
+    { key: 'store', label: 'Store', to: '/app/settings' },
+    { key: 'data', label: 'Data sources', to: '/app/settings/data' },
+    { key: 'team', label: 'Team', to: '/app/settings/team' },
+  ]} />;
+}
 
 export function SettingsPage() {
-  return <OpsShell active="settings" title="Settings"><RequireSession><Settings /></RequireSession></OpsShell>;
+  return <OpsShell active="settings" title="Settings" tabs={<SettingsTabs active="store" />}><RequireSession><Settings /></RequireSession></OpsShell>;
+}
+
+export function TeamPage() {
+  const s = loadSession();
+  const me = useMe();
+  const role = me.data?.memberships.find((x) => x.tenant_id === s?.tenantId)?.role;
+  return (
+    <OpsShell active="settings" title="Settings" tabs={<SettingsTabs active="team" />}>
+      <RequireSession>{role === 'owner' ? <Team /> : <Panel><div className="text-[13px] text-[#66707A]">Only the owner manages the team.</div></Panel>}</RequireSession>
+    </OpsShell>
+  );
 }
 
 function Settings() {
@@ -26,13 +45,13 @@ function Settings() {
     <>
       <Panel title="Store">
         <dl className="grid grid-cols-2 gap-4 text-[14px] md:grid-cols-4">
-          <div><dt className="text-[12px] text-[#5E6E78]">Name</dt><dd className="font-semibold">{m?.tenant_name}{m?.is_sample && <> <Badge tone="info">sample</Badge></>}</dd></div>
-          <div><dt className="text-[12px] text-[#5E6E78]">Business</dt><dd className="capitalize">{m?.business_type ?? '—'}</dd></div>
-          <div><dt className="text-[12px] text-[#5E6E78]">Currency</dt><dd>{m?.currency}</dd></div>
-          <div><dt className="text-[12px] text-[#5E6E78]">Time zone · your role</dt><dd>{loc?.timezone} · <span className="capitalize">{m?.role}</span></dd></div>
+          <div><dt className="text-[12px] text-[#66707A]">Name</dt><dd className="font-semibold">{m?.tenant_name}{m?.is_sample && <> <Badge tone="info">sample</Badge></>}</dd></div>
+          <div><dt className="text-[12px] text-[#66707A]">Business</dt><dd className="capitalize">{m?.business_type ?? '—'}</dd></div>
+          <div><dt className="text-[12px] text-[#66707A]">Currency</dt><dd>{m?.currency}</dd></div>
+          <div><dt className="text-[12px] text-[#66707A]">Time zone · your role</dt><dd>{loc?.timezone} · <span className="capitalize">{m?.role}</span></dd></div>
         </dl>
       </Panel>
-      <Panel title="Delivery address" aside={<span className="text-[12px] text-[#5E6E78]">printed on every order</span>}>
+      <Panel title="Delivery address" aside={<span className="text-[12px] text-[#66707A]">printed on every order</span>}>
         <form className="grid gap-3 md:grid-cols-[2fr_1fr_100px_120px_90px_auto] md:items-end" onSubmit={(e) => { e.preventDefault(); saveAddr.mutate(); }}>
           <Field label="Street"><input className={inputCls} value={addr.address_line1} onChange={(e) => setAddr({ ...addr, address_line1: e.target.value })} required /></Field>
           <Field label="City"><input className={inputCls} value={addr.city} onChange={(e) => setAddr({ ...addr, city: e.target.value })} required /></Field>
@@ -41,11 +60,10 @@ function Settings() {
           <Field label="Country"><input className={inputCls} value={addr.country} maxLength={2} onChange={(e) => setAddr({ ...addr, country: e.target.value.toUpperCase() })} required /></Field>
           <Button type="submit" loading={saveAddr.isPending}>Save</Button>
         </form>
-        <div className="mt-2"><ErrorBox error={saveAddr.error} />{saveAddr.isSuccess && <span className="text-[13px] text-[#1E7F55]">Saved.</span>}</div>
+        <div className="mt-2"><ErrorBox error={saveAddr.error} />{saveAddr.isSuccess && <span className="text-[13px] text-[#1F7A4D]">Saved.</span>}</div>
       </Panel>
-      {m?.role === 'owner' && <Team />}
-      <Panel title="Sending orders">
-        <Notice tone="info"><b>Test mode is on.</b> When the owner approves an order, Tabula prepares the email and keeps it — it is not sent to the supplier. You can then record the supplier's answer and the delivery yourself. No payments are made by Tabula.</Notice>
+      <Panel title="Sending orders" aside={<TestModeTag />}>
+        <p className="text-[13px] leading-relaxed text-[#3B444D]">When the owner approves an order, Tabula prepares the email and keeps it — it is not sent to the supplier. Record the supplier's answer and the delivery yourself on the order. Tabula makes no payments.</p>
       </Panel>
     </>
   );
@@ -61,8 +79,8 @@ function Team() {
   const link = add.data?.invite_token ? `${location.origin}/signup?invite=${encodeURIComponent(add.data.invite_token)}&email=${encodeURIComponent(add.data.email)}` : null;
   return (
     <Panel title="Team">
-      <ul className="mb-4 flex flex-col divide-y divide-[#F1EBE4] text-[14px]">
-        {members.data?.map((x) => <li key={x.user_id} className="flex justify-between py-2"><span>{x.email}</span><span className="capitalize text-[#5E6E78]">{x.role}</span></li>)}
+      <ul className="mb-4 flex flex-col divide-y divide-[#EDEFF2] text-[14px]">
+        {members.data?.map((x) => <li key={x.user_id} className="flex justify-between py-2"><span>{x.email}</span><span className="capitalize text-[#66707A]">{x.role}</span></li>)}
       </ul>
       <form className="grid gap-3 md:grid-cols-[1fr_180px_auto] md:items-end" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
         <Field label="Invite by email" hint="You get a one-time sign-up link to pass on. Only the owner approves orders."><input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>

@@ -221,6 +221,21 @@ def test_drafts_take_the_quantities_the_owner_set(shop):
     assert (line["order_qty"], line["recommendation"]["order_qty"], line["edited"]) == ("7", "5", True)
 
 
+def test_overview_shows_what_to_order_and_orders_show_when_they_arrive(shop):
+    row = shop.get("/v1/stock/overview", params={"location_id": shop.location_id}).json()["items"][0]
+    r = row["reorder"]  # the same engine as the plan, not saved
+    assert (r["qty"], r["on_draft"]) == ("5", None) and r["supplier"] and r["cost"] is not None
+    item = shop.get(f"/v1/items/{shop.variant['id']}/history", params={"location_id": shop.location_id}).json()
+    (sp,) = item["suppliers"]
+    assert sp["price"]["amount"] and sp["order_uom"] == sp["price"]["per"]
+    run = shop.post("/v1/replenishment-runs", {"location_id": shop.location_id}).json()
+    (po,) = shop.post("/v1/purchase-orders/from-run", {"run_id": run["id"]}).json()
+    row = shop.get("/v1/stock/overview", params={"location_id": shop.location_id}).json()["items"][0]
+    assert row["reorder"]["on_draft"] == po["number"]  # already on a draft: not suggested twice
+    (listed,) = shop.get("/v1/purchase-orders").json()
+    assert listed["expected_at"] and listed["expected_source"] == "lead_time"  # an estimate, labelled as one
+
+
 # ---------------------------------------------------------------------------
 # Google Sheets (shared link) — Google hosts only
 # ---------------------------------------------------------------------------

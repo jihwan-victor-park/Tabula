@@ -68,11 +68,22 @@ def _line_totals(session: Session, po: PurchaseOrder) -> dict[str, Any]:
 
     rows = po_progress.lines(session, po)
     if not rows:
-        return {"awaiting_reply": False, "expected_lines": 0, "open_issues": 0}
+        # Not sent yet: when it would arrive if ordered today, from the supplier's lead time in the plan.
+        estimate = min((l["recommendation"].get("delivery_date") for l in purchasing.revision(session, po).content["lines"]
+                        if l.get("recommendation", {}).get("delivery_date")), default=None)
+        return {"awaiting_reply": False, "expected_lines": 0, "open_issues": 0,
+                "expected_at": estimate, "expected_source": "lead_time" if estimate else None}
     states = [po_progress.state(l) for l in rows]
+    waiting = [(l, s) for l, s in zip(rows, states) if s.unconfirmed > 0 or s.outstanding > 0]
+    # The supplier's date where they gave one; otherwise the lead-time estimate from when it was drafted.
+    eta = min((l.eta for l, s in waiting if l.eta and s.outstanding > 0), default=None)
+    estimate = None if eta or not waiting else min(
+        (l["recommendation"].get("delivery_date") for l in purchasing.revision(session, po).content["lines"]
+         if l.get("recommendation", {}).get("delivery_date")), default=None)
     return {"awaiting_reply": any(s.unconfirmed > 0 for s in states),
-            "expected_lines": sum(1 for s in states if s.unconfirmed > 0 or s.outstanding > 0),
-            "open_issues": po_progress.open_issues(session, po)}
+            "expected_lines": len(waiting), "open_issues": po_progress.open_issues(session, po),
+            "expected_at": eta.isoformat() if eta else estimate,
+            "expected_source": "supplier" if eta else "lead_time" if estimate else None}
 
 
 def _detail(session: Session, po: PurchaseOrder) -> dict[str, Any]:

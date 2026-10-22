@@ -3,6 +3,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, loadSession, type ConnectorAccount, type DevInfo, type Location } from './api';
 import { Badge, Button, EmptyState, ErrorBox, Loading, Notice, OpsShell, Panel, RequireSession, when } from './kit';
 
@@ -30,7 +31,7 @@ export function ConnectionsPage() {
   });
   const env = dev.data?.square_environment;
   return (
-    <OpsShell active="connections" title="Connections" icon="hub">
+    <OpsShell active="settings" title="Square" subtitle={<Link to="/app/settings/data" className="hover:underline">← Data sources</Link>}>
       <RequireSession>
         <Notice tone="info">
           Square is <b>read-only</b> for Tabula: sales, items and stock are read; nothing is written back. Deliveries you record must also be entered in Square.
@@ -60,15 +61,15 @@ function Account({ a, onChange }: { a: ConnectorAccount; onChange: () => void })
   const disconnect = useMutation({ mutationFn: () => api(`/connectors/${a.id}`, { method: 'DELETE' }), onSuccess: onChange });
   const recon = a.sync_state.reconciliations ?? [];
   return (
-    <div className="rounded-[12px] border border-[#E8D4C6] p-4 text-[13px]">
+    <div className="rounded-[6px] border border-[#E2E5E9] p-4 text-[13px]">
       <div className="flex flex-wrap items-center gap-2">
         <b>{a.display_name ?? a.merchant_id}</b>{a.status === 'active' ? <Badge tone="good">Connected</Badge> : <Badge tone="bad">Needs reconnecting</Badge>}
         <Badge tone={a.environment === 'production' ? 'neutral' : 'info'}>{a.environment === 'mock' ? 'Demo connection' : a.environment === 'sandbox' ? 'Square test account' : 'Square'}</Badge>
-        <span className="text-[12px] text-[#5C7A8A]">access valid until {when(a.token_expires_at)}{a.sync_state.token_refreshed_at ? ` · renewed ${when(a.sync_state.token_refreshed_at)}` : ''}</span>
+        <span className="text-[12px] text-[#66707A]">access valid until {when(a.token_expires_at)}{a.sync_state.token_refreshed_at ? ` · renewed ${when(a.sync_state.token_refreshed_at)}` : ''}</span>
       </div>
       {a.status !== 'active' && <Notice>Square no longer accepts this connection ({a.status.replace('_', ' ')}). Reconnect above; location links and history are kept.</Notice>}
-      {a.last_error && <div className="mt-1 text-[12px] text-[#991B1B]">Last error: {a.last_error}</div>}
-      <div className="mt-1 text-[12px] text-[#5C7A8A]">{a.last_success_at ? `Last successful sync ${when(a.last_success_at)}` : 'Not synced yet'}{a.sync_state.sales_synced_through ? ` · sales read through ${when(a.sync_state.sales_synced_through)}` : ''} · runs every 15 min (sales), 30 min (stock), nightly reconciliation of the last 3 days</div>
+      {a.last_error && <div className="mt-1 text-[12px] text-[#B42318]">Last error: {a.last_error}</div>}
+      <div className="mt-1 text-[12px] text-[#66707A]">{a.last_success_at ? `Last successful sync ${when(a.last_success_at)}` : 'Not synced yet'}{a.sync_state.sales_synced_through ? ` · sales read through ${when(a.sync_state.sales_synced_through)}` : ''} · runs every 15 min (sales), 30 min (stock), nightly reconciliation of the last 3 days</div>
 
       <div className="mt-3 font-semibold">Locations</div>
       <ul className="mt-1 flex flex-col gap-2">
@@ -79,14 +80,14 @@ function Account({ a, onChange }: { a: ConnectorAccount; onChange: () => void })
       </ul>
       {a.status === 'active' && (
         <div className="mt-2 flex flex-wrap items-end gap-2">
-          <select aria-label="Square location" className="rounded-[8px] border border-[#E8D4C6] px-2 py-1" value={ext} onChange={(e) => setExt(e.target.value)}>
+          <select aria-label="Square location" className="rounded-[8px] border border-[#E2E5E9] px-2 py-1" value={ext} onChange={(e) => setExt(e.target.value)}>
             <option value="">Square location…</option>{external.data?.map((x) => <option key={x.external_id} value={x.external_id}>{x.name}</option>)}
           </select>
-          <select aria-label="Tabula location" className="rounded-[8px] border border-[#E8D4C6] px-2 py-1" value={loc} onChange={(e) => setLoc(e.target.value)}>
+          <select aria-label="Tabula location" className="rounded-[8px] border border-[#E2E5E9] px-2 py-1" value={loc} onChange={(e) => setLoc(e.target.value)}>
             <option value="">Tabula store…</option>{locations.data?.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
           <Button variant="secondary" onClick={() => link.mutate()} disabled={!ext || !loc} loading={link.isPending}>Link</Button>
-          <span className="text-[11px] text-[#5C7A8A]">Linking hands that store's stock count to Square. Sales stay on files until you switch the sales source.</span>
+          <span className="text-[11px] text-[#66707A]">Linking hands that store's stock count to Square. Sales stay on files until you switch the sales source.</span>
         </div>
       )}
       <ErrorBox error={link.error} />
@@ -115,11 +116,11 @@ function SalesFeed({ location, onChange }: { location: Location; onChange: () =>
   });
   const square = location.sales_feed === 'square';
   return (
-    <div className="mt-1 rounded-[10px] bg-[#FDF5EF] p-2 text-[12px]">
+    <div className="mt-1 rounded-[6px] bg-[#F8F9FA] p-2 text-[12px]">
       Sales source: <b>{square ? 'Square' : 'uploaded files'}</b>{location.sales_feed_since ? ` since ${when(location.sales_feed_since)}` : ''}.
       One source at a time, so a sale is never counted twice. Switching is refused if the current source already recorded sales after the switch time.
       <div className="mt-1 flex flex-wrap items-center gap-2">
-        <label>Switch at <input type="datetime-local" className="rounded border border-[#E8D4C6] px-1" value={since} onChange={(e) => setSince(e.target.value)} /> (empty = now)</label>
+        <label>Switch at <input type="datetime-local" className="rounded border border-[#E2E5E9] px-1" value={since} onChange={(e) => setSince(e.target.value)} /> (empty = now)</label>
         <Button variant="secondary" onClick={() => set.mutate(square ? 'files' : 'square')} loading={set.isPending}>{square ? 'Go back to files' : 'Use Square for sales'}</Button>
       </div>
       <ErrorBox error={set.error} />

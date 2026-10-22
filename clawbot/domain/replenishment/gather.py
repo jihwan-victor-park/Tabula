@@ -231,7 +231,7 @@ def gather(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, cu
         .order_by(PurchaseOrder.number, PoLine.line_no)
     ):
         st = po_progress.state(line)
-        ref = f"{po.number} ({supplier_names.get(po.supplier_id, 'supplier')}{', test capture' if po.id in captured else ''})"
+        ref = f"{po.number} ({supplier_names.get(po.supplier_id, 'supplier')}{', test order — not emailed' if po.id in captured else ''})"
         age = max((cutoff - po.sent_at).days, 0)
         if st.unconfirmed > 0:  # sent, the supplier has not said yes: hold, never projected as arriving
             inbound[line.variant_id].append(InboundLine(

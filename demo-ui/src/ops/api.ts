@@ -88,7 +88,7 @@ export type ProjectionDay = { day: number; date: string; start: string; demand: 
 export type PlanLine = {
   variant_id: string; sku: string; status: string; needs_review: boolean;
   order_qty: string; order_uom: string | null; base_qty: string; line_cost: string | null; currency: string | null;
-  supplier: string | null; supplier_item_id: string | null; on_hand: string | null; open_po: string | null;
+  supplier: string | null; supplier_item_id: string | null; on_hand: string | null; open_po: string | null; pos_pending: string[];
   arrival: { order_date: string | null; delivery_date: string | null; usable_date: string | null } | null;
   daily_demand: string | null; target: string | null; position: string | null; need: string | null;
   need_before_held: string | null; held_qty: string | null;
@@ -109,6 +109,8 @@ export type PoSummary = {
   id: string; number: string; status: string; revision: number; supplier: string; ship_to: string; currency: string;
   lines: number; estimated_total: string; needs_attention: boolean; created_at: string; updated_at: string;
   ack_status: string; sent_at: string | null; awaiting_reply: boolean; expected_lines: number; open_issues: number;
+  /** Supplier's date when they gave one, otherwise the lead-time estimate. */
+  expected_at: string | null; expected_source: 'supplier' | 'lead_time' | null;
 };
 export type PoLine = {
   line_no: number; sku: string; name: string; supplier_sku: string; order_uom: string; units_per_order_uom: string;

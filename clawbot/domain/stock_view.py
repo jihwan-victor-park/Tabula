@@ -50,6 +50,10 @@ def overview(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID) 
     location = tenancy.get_location(session, tenant_id=tenant_id, location_id=location_id)
     ev = service.evaluate(session, tenant_id=tenant_id, location_id=location_id)
     variants = {v.id: v for v in session.scalars(select(Variant).where(Variant.tenant_id == tenant_id))}
+    suppliers = dict(session.execute(select(Supplier.id, Supplier.name).where(Supplier.tenant_id == tenant_id)).all())
+    from clawbot.domain import purchasing
+
+    on_draft = purchasing.open_po_numbers(session, tenant_id=tenant_id, location_id=location_id)
     today = datetime.now(ZoneInfo(location.timezone)).date()
     rows = []
     for vid, line in ev.lines.items():
@@ -80,6 +84,11 @@ def overview(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID) 
             "on_hand": _n(on_hand), "incoming_confirmed": _n(confirmed), "incoming_unconfirmed": _n(unconfirmed),
             "daily_demand": _n(demand), "days_of_cover": _n(on_hand / demand) if on_hand is not None and demand else None,
             "stockout_date": stockout, "state": state, "plan_status": line.status,
+            # What the plan would order now (same engine, not saved); a draft already holding the item is named.
+            "reorder": {"qty": _n(line.order_qty), "uom": line.order_uom, "base_qty": _n(line.base_qty),
+                        "cost": _n(line.line_cost), "currency": line.currency,
+                        "supplier": suppliers.get(line.supplier_id) if line.supplier_id else None,
+                        "on_draft": on_draft.get(vid)} if line.status == "order" else None,
             "stock_as_of": i.get("stock_as_of"), "stock_source": i.get("stock_source"),
             # A level built only from scans/adjustments was never counted: never shown as current.
             "stock_counted": counted, "stock_age_hours": _n(age), "stale": age is None or age > STALE_AFTER_HOURS or not counted,
@@ -139,7 +148,30 @@ def item_history(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                     "outstanding": _n(po_progress.state(l).outstanding), "unconfirmed": _n(po_progress.state(l).unconfirmed),
                     "unit": l.order_uom, "eta": l.eta.isoformat() if l.eta else None} for po, l in po_lines],
         "projection": (ev_line.result.get("projection") or [])[:21] if ev_line is not None else [],
+        "suppliers": _supplier_prices(session, tenant_id, variant_id),
     }
+
+
+def _supplier_prices(session: Session, tenant_id: uuid.UUID, variant_id: uuid.UUID) -> list[dict[str, Any]]:
+    """Who sells this item (confirmed mappings) and the price in force now, per order unit."""
+    now = datetime.now(timezone.utc)
+    out = []
+    for item, name in session.execute(select(SupplierItem, Supplier.name).join(
+            Supplier, (Supplier.tenant_id == SupplierItem.tenant_id) & (Supplier.id == SupplierItem.supplier_id)).where(
+            SupplierItem.tenant_id == tenant_id, SupplierItem.variant_id == variant_id,
+            SupplierItem.mapping_status == "confirmed", SupplierItem.status == "active")):
+        price = session.scalars(select(SupplierItemPrice).where(
+            SupplierItemPrice.tenant_id == tenant_id, SupplierItemPrice.supplier_item_id == item.id,
+            SupplierItemPrice.superseded_at.is_(None), SupplierItemPrice.valid_from <= now,
+            (SupplierItemPrice.expires_at.is_(None)) | (SupplierItemPrice.expires_at > now))
+            .order_by(SupplierItemPrice.valid_from.desc())).first()
+        out.append({"supplier": name, "supplier_sku": item.supplier_sku, "order_uom": item.order_uom,
+                    "units_per_order_uom": _n(item.units_per_order_uom), "lead_time_days": item.lead_time_days,
+                    "price": None if price is None else {"amount": _n(price.unit_price), "currency": price.currency,
+                                                          "per": item.order_uom,
+                                                          "units_per": _n(price.units_per_order_uom), "type": price.price_type,
+                                                          "since": price.valid_from.isoformat()}})
+    return out
 
 
 def analytics(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UUID, days: int = 28) -> dict[str, Any]:

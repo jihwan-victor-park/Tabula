@@ -14,18 +14,18 @@ export function DailyBars({ data, height = 160, unit = 'units' }: { data: { date
       <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="h-[160px] w-full" role="img" aria-label={`Daily ${unit}`}>
         <defs>
           <pattern id="nodata" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="3" stroke="#D8CFC6" strokeWidth="1" />
+            <line x1="0" y1="0" x2="0" y2="3" stroke="#CBD1D8" strokeWidth="1" />
           </pattern>
         </defs>
         {[0.25, 0.5, 0.75].map((f) => <line key={f} x1="0" x2="100" y1={height * f} y2={height * f} stroke={C.line} strokeWidth="0.2" />)}
         {values.map((v, i) => v == null
           ? <rect key={i} x={i * w + w * 0.12} width={w * 0.76} y={height * 0.55} height={height * 0.45} fill="url(#nodata)" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
           : <rect key={i} x={i * w + w * 0.12} width={w * 0.76} y={height - (v / max) * (height - 6)} height={Math.max((v / max) * (height - 6), 0.6)} rx="0.6"
-              fill={hover === i ? C.navy : C.brand} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />)}
+              fill={hover === i ? C.ink : C.accent} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />)}
       </svg>
-      <div className="mt-1 flex justify-between text-[11px] text-[#5E6E78]"><span>{day(data[0]?.date)}</span><span>{day(data[data.length - 1]?.date)}</span></div>
+      <div className="mt-1 flex justify-between text-[11px] text-[#66707A]"><span>{day(data[0]?.date)}</span><span>{day(data[data.length - 1]?.date)}</span></div>
       {h && (
-        <div className="pointer-events-none absolute right-0 top-0 rounded-[8px] bg-[#16232B] px-2 py-1 text-[12px] text-white">
+        <div className="pointer-events-none absolute right-0 top-0 rounded-[8px] bg-[#14181D] px-2 py-1 text-[12px] text-white">
           {day(h.date)}: {h.units == null ? 'no sales data' : `${num(h.units)} ${unit}`}
         </div>
       )}
@@ -43,11 +43,11 @@ export function StockLine({ points, height = 140 }: { points: { label: string; v
     <div>
       <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="h-[140px] w-full" role="img" aria-label="Projected stock">
         <line x1="0" x2="100" y1={y(0)} y2={y(0)} stroke={C.line} strokeWidth="0.4" />
-        <path d={`${path} L100,${y(0)} L0,${y(0)} Z`} fill={C.brandSoft} />
-        <path d={path} fill="none" stroke={C.brand} strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-        {points.map((p, i) => p.short && <rect key={i} x={i * step - step / 2} width={step} y={0} height={height} fill="#B93A26" opacity="0.08" />)}
+        <path d={`${path} L100,${y(0)} L0,${y(0)} Z`} fill={C.accentSoft} />
+        <path d={path} fill="none" stroke={C.accent} strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+        {points.map((p, i) => p.short && <rect key={i} x={i * step - step / 2} width={step} y={0} height={height} fill="#B42318" opacity="0.08" />)}
       </svg>
-      <div className="mt-1 flex justify-between text-[11px] text-[#5E6E78]"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
+      <div className="mt-1 flex justify-between text-[11px] text-[#66707A]"><span>{points[0].label}</span><span>{points[points.length - 1].label}</span></div>
     </div>
   );
 }

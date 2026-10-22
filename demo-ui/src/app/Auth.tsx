@@ -9,25 +9,25 @@ import { Badge, Button, ErrorBox, Field, Loading, Logo, Panel, inputCls, useMe }
 
 function AuthFrame({ title, sub, children }: { title: string; sub: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid min-h-screen bg-[#F7F3EE] font-[Plus_Jakarta_Sans,system-ui,sans-serif] text-[#16232B] lg:grid-cols-[1.1fr_1fr]">
-      <div className="hidden flex-col justify-between bg-[#1F3A4A] p-12 text-white lg:flex">
+    <div className="grid min-h-screen bg-[#F4F5F7] font-[Inter,system-ui,sans-serif] text-[#14181D] lg:grid-cols-[1.1fr_1fr]">
+      <div className="hidden flex-col justify-between bg-[#14181D] p-12 text-white lg:flex">
         <Logo light />
         <div>
-          <h2 className="max-w-[460px] text-[34px] font-bold leading-tight tracking-[-0.02em]">Know what's on your shelves, and what to order next.</h2>
-          <ul className="mt-6 flex flex-col gap-3 text-[15px] text-[#C9D6DD]">
+          <h2 className="max-w-[460px] text-[30px] font-semibold leading-tight tracking-[-0.02em]">Know what's on your shelves, and what to order next.</h2>
+          <ul className="mt-6 flex flex-col gap-3 text-[15px] text-[#C5CBD3]">
             {['Bring in your sales and stock from a spreadsheet or Square', 'See what runs out soon — with the numbers behind it',
               'Count and adjust stock by scanning barcodes', 'Turn suggestions into supplier orders you approve'].map((t) => (
-              <li key={t} className="flex gap-2"><SymbolIcon icon="check_circle" family="rounded" className="text-[20px] text-[#F29A85]" />{t}</li>
+              <li key={t} className="flex gap-2"><SymbolIcon icon="check_circle" family="rounded" className="text-[20px] text-[#9DB4E8]" />{t}</li>
             ))}
           </ul>
         </div>
-        <div className="text-[12px] text-[#8FA7B4]">Orders are never sent to suppliers without your approval.</div>
+        <div className="text-[12px] text-[#9AA3AC]">Orders are never sent to suppliers without your approval.</div>
       </div>
       <div className="flex items-center justify-center px-5 py-10">
         <div className="w-full max-w-[400px]">
           <div className="mb-8 lg:hidden"><Logo /></div>
-          <h1 className="text-[26px] font-bold tracking-[-0.01em]">{title}</h1>
-          <p className="mt-1 text-[14px] text-[#5E6E78]">{sub}</p>
+          <h1 className="text-[24px] font-semibold tracking-[-0.01em]">{title}</h1>
+          <p className="mt-1 text-[14px] text-[#66707A]">{sub}</p>
           <div className="mt-6">{children}</div>
         </div>
       </div>
@@ -55,8 +55,8 @@ export function SignInPage({ mode }: { mode: 'signin' | 'signup' }) {
   const onSubmit = (e: FormEvent) => { e.preventDefault(); submit.mutate(); };
   return (
     <AuthFrame title={mode === 'signin' ? 'Welcome back' : invite ? 'Join your team on Tabula' : 'Create your account'}
-      sub={mode === 'signin' ? <>New to Tabula? <Link className="font-semibold text-[#B23F27] underline" to="/signup">Create an account</Link></>
-        : <>Already have one? <Link className="font-semibold text-[#B23F27] underline" to="/signin">Sign in</Link></>}>
+      sub={mode === 'signin' ? <>New to Tabula? <Link className="font-semibold text-[#2457C5] underline" to="/signup">Create an account</Link></>
+        : <>Already have one? <Link className="font-semibold text-[#2457C5] underline" to="/signin">Sign in</Link></>}>
       <form className="flex flex-col gap-4" onSubmit={onSubmit}>
         <Field label="Email"><input className={inputCls} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></Field>
         <Field label="Password" hint={mode === 'signup' ? 'At least 10 characters.' : undefined}>
@@ -77,7 +77,7 @@ function DemoSignIn() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   return (
-    <div className="mt-8 rounded-[12px] border border-dashed border-[#CADBEE] bg-[#F1F6FC] p-4 text-[13px] text-[#24507F]">
+    <div className="mt-8 rounded-[6px] border border-dashed border-[#CADBEE] bg-[#F3F6FC] p-4 text-[13px] text-[#1B3566]">
       <button className="font-semibold underline" onClick={() => setOpen((o) => !o)}>Demo sign-in (developer machine only)</button>
       {open && (
         <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); saveSession({ tenantId: '', tenantName: '', user: email }); qc.clear(); navigate('/app/stores'); }}>
@@ -105,7 +105,7 @@ export function WelcomePage() {
     onSuccess: (s) => {
       saveSession({ ...(loadSession()?.user ? { user: loadSession()!.user } : {}), tenantId: s.tenant_id, tenantName: s.tenant_name, locationId: s.location_id });
       qc.invalidateQueries({ queryKey: ['me'] });
-      navigate('/app/data?welcome=1');
+      navigate('/app/setup');
     },
   });
   if (me.isLoading) return <Loading />;
@@ -133,7 +133,7 @@ export function WelcomePage() {
         <ErrorBox error={create.error} />
         <Button type="submit" size="lg" loading={create.isPending}>Continue to your data</Button>
       </form>
-      <div className="mt-6 text-center text-[13px] text-[#5E6E78]">Just looking? <Link className="font-semibold text-[#B23F27] underline" to="/app/stores">Open a sample store</Link></div>
+      <div className="mt-6 text-center text-[13px] text-[#66707A]">Just looking? <Link className="font-semibold text-[#2457C5] underline" to="/app/stores">Open a sample store</Link></div>
     </AuthFrame>
   );
 }
@@ -160,17 +160,17 @@ export function StoresPage() {
     <AuthFrame title="Your stores" sub={me.data.email}>
       <div className="flex flex-col gap-2">
         {real.map((m) => (
-          <button key={m.tenant_id} onClick={() => open(m)} className="flex items-center justify-between rounded-[14px] border border-[#E8E0D8] bg-white px-4 py-3 text-left hover:border-[#D3C5B8]">
-            <span><span className="block text-[15px] font-semibold">{m.tenant_name}</span><span className="text-[12px] capitalize text-[#5E6E78]">{m.role}</span></span>
-            <SymbolIcon icon="chevron_right" family="rounded" className="text-[22px] text-[#5E6E78]" />
+          <button key={m.tenant_id} onClick={() => open(m)} className="flex items-center justify-between rounded-[8px] border border-[#E2E5E9] bg-white px-4 py-3 text-left hover:border-[#C9D0D7]">
+            <span><span className="block text-[15px] font-semibold">{m.tenant_name}</span><span className="text-[12px] capitalize text-[#66707A]">{m.role}</span></span>
+            <SymbolIcon icon="chevron_right" family="rounded" className="text-[22px] text-[#66707A]" />
           </button>
         ))}
-        {real.length === 0 && <Panel><div className="text-[14px] text-[#5E6E78]">You don't have a store yet.</div></Panel>}
+        {real.length === 0 && <Panel><div className="text-[14px] text-[#66707A]">You don't have a store yet.</div></Panel>}
         <Link to="/app/welcome" className="mt-1"><Button variant={real.length ? 'secondary' : 'primary'} size="lg">{real.length ? 'Add another store' : 'Set up your store'}</Button></Link>
       </div>
-      <div className="mt-8 border-t border-[#E8E0D8] pt-6">
+      <div className="mt-8 border-t border-[#E2E5E9] pt-6">
         <div className="mb-2 flex items-center gap-2 text-[14px] font-semibold">Sample store <Badge tone="info">fictional data</Badge></div>
-        <p className="mb-3 text-[13px] text-[#5E6E78]">A pet shop with 4 weeks of sales, two suppliers and stock already loaded — to try every screen. It stays separate from your own store.</p>
+        <p className="mb-3 text-[13px] text-[#66707A]">A pet shop with 4 weeks of sales, two suppliers and stock already loaded — to try every screen. It stays separate from your own store.</p>
         {samples.map((m) => <Button key={m.tenant_id} variant="secondary" onClick={() => open(m)}>Open {m.tenant_name}</Button>)}
         {samples.length === 0 && <Button variant="secondary" onClick={() => sample.mutate()} loading={sample.isPending}>Create a sample store</Button>}
         <ErrorBox error={sample.error} />

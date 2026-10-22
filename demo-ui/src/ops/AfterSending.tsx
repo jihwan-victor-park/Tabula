@@ -24,39 +24,39 @@ export function AfterSending({ po, role, onChange }: { po: PoDetail; role?: stri
     <>
       {po.status === 'delivery_unknown' && <DeliveryUnknown po={po} role={role} onChange={onChange} />}
       <Panel title="Supplier answer and delivery" aside={
-        <div className="flex items-center gap-2 text-[12px] text-[#5C7A8A]">
+        <div className="flex items-center gap-2 text-[12px] text-[#66707A]">
           Supplier: <StatusChip status={`ack_${pr.ack_status}`} />
-          <Link className="text-[#E8654A] underline" to={`/app/receiving/${po.id}`}>Record a delivery</Link>
+          <Link className="text-[#2457C5] underline" to={`/app/receiving/${po.id}`}>Record a delivery</Link>
         </div>}>
         <div className="overflow-x-auto">
           <table className="[&_td]:pr-3 [&_th]:pr-3 w-full min-w-[920px] text-[13px]">
-            <thead><tr className="text-left text-[#5C7A8A]">
+            <thead><tr className="text-left text-[12px] font-medium text-[#66707A]">
               <th className="py-2">#</th><th>Item</th><th className="text-right">Ordered</th><th className="text-right">Confirmed</th>
               <th className="text-right">Won't come</th><th className="text-right">Arrived (sellable / damaged)</th>
               <th className="text-right">Still expected</th><th className="text-right">Not confirmed</th><th>ETA</th>
             </tr></thead>
             <tbody>
               {pr.lines.map((l) => (
-                <tr key={l.line_no} className="border-t border-[#F1E4DA] align-top">
+                <tr key={l.line_no} className="border-t border-[#EDEFF2] align-top">
                   <td className="py-2">{l.line_no}</td>
                   <td>
-                    <div className="font-medium">{l.sku} <span className="font-mono text-[12px] text-[#5C7A8A]">{l.supplier_sku}</span></div>
-                    <div className="text-[11px] text-[#5C7A8A]">{l.order_uom} of {num(l.units_per_order_uom)} · {money(l.unit_price, po.currency)}{l.replaces_line_no ? ` · substitute for line ${l.replaces_line_no}` : ''}</div>
-                    {l.pos_pending.length > 0 && <div className="mt-1 text-[11px] font-medium text-[#991B1B]">Stock mismatch: {l.pos_pending.join('; ')}</div>}
+                    <div className="font-medium">{l.sku} <span className="text-[12px] font-normal text-[#66707A]">{l.supplier_sku}</span></div>
+                    <div className="text-[11px] text-[#66707A]">{l.order_uom} of {num(l.units_per_order_uom)} · {money(l.unit_price, po.currency)}{l.replaces_line_no ? ` · substitute for line ${l.replaces_line_no}` : ''}</div>
+                    {l.pos_pending.length > 0 && <div className="mt-1 text-[11px] font-medium text-[#B42318]">Stock mismatch: {l.pos_pending.join('; ')}</div>}
                   </td>
-                  <td className="text-right font-mono">{num(l.ordered)}</td>
-                  <td className="text-right font-mono">{l.confirmed == null ? <span className="text-[#8A5A00]">no answer</span> : num(l.confirmed)}</td>
-                  <td className="text-right font-mono">{Number(l.rejected) + Number(l.cancelled) > 0 ? num(String(Number(l.rejected) + Number(l.cancelled))) : ''}</td>
-                  <td className="text-right font-mono">{Number(l.received) > 0 ? `${num(l.sellable_received)} / ${num(l.damaged)}` : ''}</td>
-                  <td className="text-right font-mono font-semibold">{num(l.outstanding)}</td>
-                  <td className="text-right font-mono text-[#8A5A00]">{Number(l.unconfirmed) > 0 ? num(l.unconfirmed) : ''}</td>
-                  <td className="font-mono">{l.eta ?? '—'}</td>
+                  <td className="text-right tabular-nums">{num(l.ordered)}</td>
+                  <td className="text-right tabular-nums">{l.confirmed == null ? <span className="text-[#A15C07]">no answer</span> : num(l.confirmed)}</td>
+                  <td className="text-right tabular-nums">{Number(l.rejected) + Number(l.cancelled) > 0 ? num(String(Number(l.rejected) + Number(l.cancelled))) : ''}</td>
+                  <td className="text-right tabular-nums">{Number(l.received) > 0 ? `${num(l.sellable_received)} / ${num(l.damaged)}` : ''}</td>
+                  <td className="text-right tabular-nums font-semibold">{num(l.outstanding)}</td>
+                  <td className="text-right tabular-nums text-[#A15C07]">{Number(l.unconfirmed) > 0 ? num(l.unconfirmed) : ''}</td>
+                  <td className="tabular-nums">{l.eta ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p className="mt-2 text-[11px] text-[#5C7A8A]">
+        <p className="mt-2 text-[11px] text-[#66707A]">
           In the plan: <b>still expected</b> is counted as arriving on the ETA; <b>not confirmed</b> only stops a duplicate order and is never counted as arriving; quantities that won't come are dropped.
         </p>
         {pr.lines.filter((l) => l.proposal).map((l) => <ProposalCard key={l.line_no} po={po} line={l} role={role} onChange={onChange} />)}
@@ -64,22 +64,22 @@ export function AfterSending({ po, role, onChange }: { po: PoDetail; role?: stri
           <div className="mt-3 text-[12px]">
             <b>Damage / issues:</b>{' '}
             {pr.issues.map((i) => <span key={i.id} className="mr-3">line {i.line_no}: {num(i.qty)} {i.kind} <StatusChip status={i.status} /></span>)}
-            <Link className="ml-2 text-[#E8654A] underline" to={`/app/receiving/${po.id}`}>resolve on Receiving</Link>
+            <Link className="ml-2 text-[#2457C5] underline" to={`/app/receiving/${po.id}`}>resolve on Receiving</Link>
           </div>
         )}
       </Panel>
 
-      <Panel title="Supplier replies" aside={<span className="text-[12px] text-[#5C7A8A]">A reply changes nothing until you review and apply it.</span>}>
+      <Panel id="replies" title="Supplier replies" aside={<span className="text-[12px] text-[#66707A]">A reply changes nothing until you review and apply it.</span>}>
         <AddReply po={po} onChange={onChange} />
         {pending && <ReviewReply key={pending.id} po={po} reply={pending} onChange={onChange} />}
         <ul className="mt-3 flex flex-col gap-2">
           {pr.replies.filter((r) => r.id !== pending?.id).map((r) => (
-            <li key={r.id} className="rounded-[10px] border border-[#F1E4DA] px-3 py-2 text-[12px]">
+            <li key={r.id} className="rounded-[6px] border border-[#EDEFF2] px-3 py-2 text-[12px]">
               <div className="flex flex-wrap items-center gap-2"><StatusChip status={r.status} />
                 <span>{r.source === 'mock' ? 'Mock reply (generated for testing)' : r.source === 'upload' ? `File ${r.file_name}` : 'Pasted'}</span>
-                <span className="text-[#5C7A8A]">supplier time {when(r.replied_at)}</span></div>
-              <details className="mt-1"><summary className="cursor-pointer text-[#5C7A8A]">Original text</summary>
-                <pre className="mt-1 whitespace-pre-wrap rounded-[8px] bg-[#FDF5EF] p-2">{r.raw_text}</pre></details>
+                <span className="text-[#66707A]">supplier time {when(r.replied_at)}</span></div>
+              <details className="mt-1"><summary className="cursor-pointer text-[#66707A]">Original text</summary>
+                <pre className="mt-1 whitespace-pre-wrap rounded-[8px] bg-[#F8F9FA] p-2">{r.raw_text}</pre></details>
             </li>
           ))}
         </ul>
@@ -96,7 +96,7 @@ function DeliveryUnknown({ po, role, onChange }: { po: PoDetail; role?: string; 
       <b>Delivery unknown.</b> The sender stopped after handing the order over, so the supplier may already have it. It is not resent automatically and the plan keeps holding these quantities.
       Check with the supplier: if they have it, record their reply below; if they confirm they never received it:
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input className="min-w-[280px] rounded-[8px] border border-[#E8D4C6] px-2 py-1" placeholder="How you confirmed (e.g. phoned the order desk)" value={note} onChange={(e) => setNote(e.target.value)} />
+        <input className="min-w-[280px] rounded-[8px] border border-[#E2E5E9] px-2 py-1" placeholder="How you confirmed (e.g. phoned the order desk)" value={note} onChange={(e) => setNote(e.target.value)} />
         <Button variant="secondary" onClick={() => m.mutate()} disabled={!note.trim() || role !== 'owner'} loading={m.isPending}>Supplier never received it</Button>
       </div>
       <ErrorBox error={m.error} />
@@ -115,13 +115,13 @@ function ProposalCard({ po, line, role, onChange }: { po: PoDetail; line: Progre
     : p.kind === 'substitute' ? `${p.was.supplier_sku} → ${p.substitute_sku} (${num(p.qty!)} ${line.order_uom})`
     : `${num(p.was.ordered_qty)} → ${num(p.qty!)} ${line.order_uom}`;
   return (
-    <div className="mt-3 rounded-[12px] border border-[#F5D58A] bg-[#FFF8E1] p-3 text-[13px]">
+    <div className="mt-3 rounded-[6px] border border-[#F3E2C0] bg-[#FEF8EC] p-3 text-[13px]">
       <div><b>Line {line.line_no} — {CHANGE_LABEL[p.kind]}:</b> {what}{p.eta ? ` · ETA ${p.eta}` : ''}</div>
-      <div className="mt-1 text-[12px] text-[#6B4A00]">Your approval covered the original terms, so this change needs the owner's decision. Until then the line is held, not counted as arriving.</div>
+      <div className="mt-1 text-[12px] text-[#5C3A06]">Your approval covered the original terms, so this change needs the owner's decision. Until then the line is held, not counted as arriving.</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button onClick={() => decide.mutate('accept')} disabled={role !== 'owner'} loading={decide.isPending && decide.variables === 'accept'}>Accept change</Button>
         <Button variant="danger" onClick={() => decide.mutate('decline')} disabled={role !== 'owner'} loading={decide.isPending && decide.variables === 'decline'}>Decline (line won't come)</Button>
-        {role !== 'owner' && <span className="text-[12px] text-[#5C7A8A]">Only the owner decides changes.</span>}
+        {role !== 'owner' && <span className="text-[12px] text-[#66707A]">Only the owner decides changes.</span>}
       </div>
       <ErrorBox error={decide.error} />
     </div>
@@ -153,27 +153,27 @@ function AddReply({ po, onChange }: { po: PoDetail; onChange: () => void }) {
     onSuccess: () => { setText(''); setFile(null); onChange(); },
   });
   return (
-    <div className="rounded-[12px] border border-[#F1E4DA] p-3">
+    <div className="rounded-[6px] border border-[#EDEFF2] p-3">
       <div className="mb-2 flex flex-wrap gap-2 text-[13px]">
         {(['paste', 'upload', 'mock'] as const).map((m) => (
-          <button key={m} onClick={() => setMode(m)} className={cn('rounded-full border px-3 py-1', mode === m ? 'border-[#E8654A] bg-[#E8654A14] text-[#B4462F]' : 'border-[#E8D4C6]')}>
+          <button key={m} onClick={() => setMode(m)} className={cn('rounded-[6px] border px-3 py-1 font-medium', mode === m ? 'border-[#14181D] bg-[#14181D] text-white' : 'border-[#D5DAE0] text-[#3B444D] hover:bg-[#F4F5F7]')}>
             {m === 'paste' ? 'Paste email' : m === 'upload' ? 'Upload file (.txt .eml .csv)' : 'Practice reply'}
           </button>
         ))}
       </div>
-      {mode === 'paste' && <textarea aria-label="Reply text" className="h-[110px] w-full rounded-[10px] border border-[#E8D4C6] p-2 font-mono text-[12px]" value={text} onChange={(e) => setText(e.target.value)} placeholder={`Paste the supplier's email here, e.g.\n${po.progress?.lines[0]?.supplier_sku ?? 'ABC-123'}: we can only ship 3 case, the rest is backordered.\nDelivery next Tuesday.`} />}
+      {mode === 'paste' && <textarea aria-label="Reply text" className="h-[110px] w-full rounded-[6px] border border-[#E2E5E9] p-2 font-mono text-[12px]" value={text} onChange={(e) => setText(e.target.value)} placeholder={`Paste the supplier's email here, e.g.\n${po.progress?.lines[0]?.supplier_sku ?? 'ABC-123'}: we can only ship 3 case, the rest is backordered.\nDelivery next Tuesday.`} />}
       {mode === 'upload' && <input aria-label="Reply file" type="file" accept=".txt,.eml,.csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-[13px]" />}
       {mode === 'mock' && (
         <label className="flex flex-wrap items-center gap-2 text-[13px]">Scenario
-          <select aria-label="Mock scenario" className="rounded-[8px] border border-[#E8D4C6] px-2 py-1" value={scenario} onChange={(e) => setScenario(e.target.value)}>
+          <select aria-label="Mock scenario" className="rounded-[8px] border border-[#E2E5E9] px-2 py-1" value={scenario} onChange={(e) => setScenario(e.target.value)}>
             {SCENARIOS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
-          <span className="text-[12px] text-[#5C7A8A]">A made-up reply for trying this out (test mode only); it is labelled as practice everywhere.</span>
+          <span className="text-[12px] text-[#66707A]">A made-up reply for trying this out (test mode only); it is labelled as practice everywhere.</span>
         </label>
       )}
       {mode !== 'mock' && (
-        <label className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-[#5C7A8A]">Supplier sent it at (if the text has no Date line)
-          <input type="datetime-local" className="rounded-[8px] border border-[#E8D4C6] px-2 py-1" value={repliedAt} onChange={(e) => setRepliedAt(e.target.value)} />
+        <label className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-[#66707A]">Supplier sent it at (if the text has no Date line)
+          <input type="datetime-local" className="rounded-[8px] border border-[#E2E5E9] px-2 py-1" value={repliedAt} onChange={(e) => setRepliedAt(e.target.value)} />
         </label>
       )}
       <div className="mt-2"><Button onClick={() => send.mutate()} loading={send.isPending}
@@ -201,44 +201,44 @@ function ReviewReply({ po, reply, onChange }: { po: PoDetail; reply: Reply; onCh
   const unclear = draft.some((d) => d.action === 'unclear');
   const lines = Object.fromEntries(po.progress!.lines.map((l) => [l.line_no, l]));
   return (
-    <div className="mt-3 rounded-[12px] border border-[#F5D58A] p-3">
+    <div className="mt-3 rounded-[6px] border border-[#F3E2C0] p-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
         <StatusChip status="pending_review" />
         <b>{reply.source === 'mock' ? 'Mock reply (generated for testing)' : reply.source === 'upload' ? `File ${reply.file_name}` : 'Pasted reply'}</b>
-        <span className="text-[12px] text-[#5C7A8A]">supplier time {when(reply.replied_at)} ({reply.parsed.replied_at_source === 'reply' ? 'from the reply' : reply.parsed.replied_at_source === 'given' ? 'entered by you' : 'time recorded'})</span>
+        <span className="text-[12px] text-[#66707A]">supplier time {when(reply.replied_at)} ({reply.parsed.replied_at_source === 'reply' ? 'from the reply' : reply.parsed.replied_at_source === 'given' ? 'entered by you' : 'time recorded'})</span>
       </div>
-      {reply.parsed.warnings.map((w, i) => <div key={i} className="mb-1 text-[12px] text-[#8A5A00]">⚠ {w}</div>)}
+      {reply.parsed.warnings.map((w, i) => <div key={i} className="mb-1 text-[12px] text-[#A15C07]">⚠ {w}</div>)}
       <div className="grid gap-3 lg:grid-cols-[1fr_340px]">
         <table className="[&_td]:pr-3 [&_th]:pr-3 w-full text-[12px]">
-          <thead><tr className="text-left text-[#5C7A8A]"><th className="py-1">Line</th><th>Tabula reads</th><th>Qty</th><th>ETA</th><th>Evidence in the reply</th></tr></thead>
+          <thead><tr className="text-left text-[12px] font-medium text-[#66707A]"><th className="py-1">Line</th><th>Tabula reads</th><th>Qty</th><th>ETA</th><th>Evidence in the reply</th></tr></thead>
           <tbody>
             {draft.map((d) => {
               const reading = reply.parsed.lines.find((l) => l.line_no === d.line_no)!;
               return (
                 <tr key={d.line_no} className="border-t border-[#F7EDE5] align-top">
-                  <td className="py-1"><b>{reading.supplier_sku}</b><div className="text-[#5C7A8A]">ordered {num(lines[d.line_no]?.ordered)} {lines[d.line_no]?.order_uom}</div></td>
+                  <td className="py-1"><b>{reading.supplier_sku}</b><div className="text-[#66707A]">ordered {num(lines[d.line_no]?.ordered)} {lines[d.line_no]?.order_uom}</div></td>
                   <td>
-                    <select aria-label={`Action for line ${d.line_no}`} className={cn('rounded-[6px] border px-1 py-0.5', d.action === 'unclear' ? 'border-[#F7B4B4]' : 'border-[#E8D4C6]')}
+                    <select aria-label={`Action for line ${d.line_no}`} className={cn('rounded-[6px] border px-1 py-0.5', d.action === 'unclear' ? 'border-[#F1C4BE]' : 'border-[#E2E5E9]')}
                             value={d.action} onChange={(e) => set(d.line_no, { action: e.target.value })}>
                       {Object.entries(ACTION_LABEL).filter(([k]) => k !== 'change' || d.change).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
-                    {d.action === 'change' && d.change && <div className="mt-1 text-[#8A5A00]">{CHANGE_LABEL[d.change.kind]}: {d.change.unit_price ?? d.change.units_per_order_uom ?? d.change.substitute_sku ?? d.change.qty} — goes to the owner</div>}
+                    {d.action === 'change' && d.change && <div className="mt-1 text-[#A15C07]">{CHANGE_LABEL[d.change.kind]}: {d.change.unit_price ?? d.change.units_per_order_uom ?? d.change.substitute_sku ?? d.change.qty} — goes to the owner</div>}
                     {d.action === 'partial' && <label className="mt-1 flex items-center gap-1"><input type="checkbox" checked={d.backorder} onChange={(e) => set(d.line_no, { backorder: e.target.checked })} /> rest on backorder (still not confirmed)</label>}
                   </td>
-                  <td>{d.action === 'partial' ? <input aria-label={`Confirmed quantity for line ${d.line_no}`} className="w-[60px] rounded-[6px] border border-[#E8D4C6] px-1 text-right font-mono" value={d.confirmed_qty} onChange={(e) => set(d.line_no, { confirmed_qty: e.target.value })} /> : d.action === 'accept' ? num(lines[d.line_no]?.ordered) : ''}</td>
-                  <td><input aria-label={`ETA for line ${d.line_no}`} type="date" className="rounded-[6px] border border-[#E8D4C6] px-1" value={d.eta} onChange={(e) => set(d.line_no, { eta: e.target.value })} /></td>
-                  <td>{reading.evidence.length ? reading.evidence.map((e, i) => <div key={i} className="font-mono text-[11px]"><span className="text-[#5C7A8A]">L{e.line}:</span> “{e.text}”</div>) : <span className="text-[#5C7A8A]">not mentioned</span>}</td>
+                  <td>{d.action === 'partial' ? <input aria-label={`Confirmed quantity for line ${d.line_no}`} className="w-[60px] rounded-[6px] border border-[#E2E5E9] px-1 text-right font-mono" value={d.confirmed_qty} onChange={(e) => set(d.line_no, { confirmed_qty: e.target.value })} /> : d.action === 'accept' ? num(lines[d.line_no]?.ordered) : ''}</td>
+                  <td><input aria-label={`ETA for line ${d.line_no}`} type="date" className="rounded-[6px] border border-[#E2E5E9] px-1" value={d.eta} onChange={(e) => set(d.line_no, { eta: e.target.value })} /></td>
+                  <td>{reading.evidence.length ? reading.evidence.map((e, i) => <div key={i} className="font-mono text-[11px]"><span className="text-[#66707A]">L{e.line}:</span> “{e.text}”</div>) : <span className="text-[#66707A]">not mentioned</span>}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[10px] bg-[#FDF5EF] p-2 text-[11px]">{reply.raw_text.split('\n').map((t, i) => `${String(i + 1).padStart(2, ' ')}  ${t}`).join('\n')}</pre>
+        <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap rounded-[6px] bg-[#F8F9FA] p-2 text-[11px]">{reply.raw_text.split('\n').map((t, i) => `${String(i + 1).padStart(2, ' ')}  ${t}`).join('\n')}</pre>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button onClick={() => apply.mutate()} disabled={unclear} loading={apply.isPending}>Apply to the order</Button>
         <Button variant="secondary" onClick={() => dismiss.mutate()} loading={dismiss.isPending}>Dismiss</Button>
-        {unclear && <span className="text-[12px] text-[#991B1B]">Decide the unclear lines first.</span>}
+        {unclear && <span className="text-[12px] text-[#B42318]">Decide the unclear lines first.</span>}
       </div>
       <ErrorBox error={apply.error ?? dismiss.error} />
     </div>

@@ -4,6 +4,8 @@ export type StockRow = {
   days_of_cover: string | null; stockout_date: string | null; state: 'out_of_stock' | 'at_risk' | 'ok' | 'no_sales_data' | 'no_stock_data';
   plan_status: string; stock_as_of: string | null; stock_source: string | null; stock_age_hours: string | null;
   stale: boolean; estimated: boolean; stock_counted: boolean; sales_through: string | null; history_days: number;
+  /** What the plan would order now (not saved). Null when nothing needs ordering or it can't be ordered yet. */
+  reorder: { qty: string; uom: string | null; base_qty: string; cost: string | null; currency: string | null; supplier: string | null; on_draft: string | null } | null;
 };
 export type Overview = { location_id: string; stock_owner: string; today: string; computed_at: string; counts: Record<string, number>; items: StockRow[] };
 
@@ -13,6 +15,8 @@ export type History = {
   pos_readings: { at: string; qty: string; source: string }[];
   orders: { po_id: string; number: string; status: string; ordered: string; outstanding: string; unconfirmed: string; unit: string; eta: string | null }[];
   projection: { day: number; date: string; start: string; demand: string; short: string; arriving: string }[];
+  suppliers: { supplier: string; supplier_sku: string; order_uom: string; units_per_order_uom: string; lead_time_days: number | null;
+    price: { amount: string; currency: string; per: string; units_per: string; type: string; since: string } | null }[];
 };
 
 type Period = { from: string; to: string; days: number; days_with_data: number; units: string | null; revenue: string | null; sales_without_price: number };

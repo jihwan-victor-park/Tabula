@@ -54,91 +54,85 @@ def main() -> None:
 def run(page: Page, browser, out: Path, email: str) -> None:
     if True:
 
-        # 1. First visit → sign-in screen → create an account.
+        # 1. First visit → sign-in screen → create an account → store details.
         page.goto(UI)
         expect(page.get_by_role("heading", name="Welcome back")).to_be_visible(timeout=15000)
         shot(page, out, "01_signin", full=False)
         page.get_by_role("link", name="Create an account").click()
         page.get_by_label("Email").fill(email)
         page.get_by_label("Password").fill("corner pets 2026!")
-        shot(page, out, "02_signup", full=False)
         page.get_by_role("button", name="Create account").click()
-
-        # 2. Store setup → straight to data.
         expect(page.get_by_role("heading", name="Set up your store")).to_be_visible(timeout=15000)
         page.get_by_label("Store name").fill("Corner Pet Supply")
         page.get_by_label("What do you sell?").select_option("pet")
         page.get_by_label("Time zone").select_option("America/New_York")
-        shot(page, out, "03_store_setup", full=False)
+        shot(page, out, "02_store_details", full=False)
         page.get_by_role("button", name="Continue to your data").click()
-        expect(page.get_by_role("heading", name="Bring in your data")).to_be_visible(timeout=15000)
-        shot(page, out, "04_data_sources")
 
-        # 3. Their own stock file: auto-matched columns, unused ones explained, a couple of questions.
-        page.get_by_role("button", name="Upload a file").click()
-        page.get_by_role("button", name=re.compile("Stock on hand")).click()
+        # 2. Onboarding: connect data step by step; each step says what it unlocks.
+        expect(page.get_by_text("0 of 4 done")).to_be_visible(timeout=15000)
+        shot(page, out, "03_setup_start")
+        page.get_by_role("link", name="Upload stock file").click()
         page.get_by_label("File").set_input_files(str(FILES / "my_stock.csv"))
         page.get_by_role("button", name="Check the file").click()
         expect(page.get_by_text("Columns we matched")).to_be_visible(timeout=15000)
         page.get_by_label("Add items that are not in Tabula yet").check()
         page.get_by_role("button", name="Now").click()
-        shot(page, out, "05_import_stock_review")
+        shot(page, out, "04_import_stock_review")
         page.get_by_role("button", name=re.compile(r"^Import")).click()  # saves the answers, re-checks, imports
         expect(page.get_by_text("my_stock.csv is in")).to_be_visible(timeout=30000)
-        shot(page, out, "06_import_stock_done", full=False)
-
-        # 4. Sales history: the file's own dates are suggested; the owner confirms.
-        page.get_by_role("button", name="Import another file").click()
-        page.get_by_role("button", name=re.compile("Sales history")).click()
+        page.get_by_role("link", name="Continue setup").click()
+        page.get_by_role("link", name="Import sales").click()
         page.get_by_label("File").set_input_files(str(FILES / "my_sales_export.csv"))
         page.get_by_role("button", name="Check the file").click()
         expect(page.get_by_text("Use these dates")).to_be_visible(timeout=15000)
-        shot(page, out, "07_import_sales_review")
         page.get_by_text("Use these dates").click()
+        shot(page, out, "05_import_sales_review")
         page.get_by_role("button", name=re.compile(r"^Import")).click()
         expect(page.get_by_text("my_sales_export.csv is in")).to_be_visible(timeout=60000)
+        page.get_by_role("link", name="Continue setup").click()
+        expect(page.get_by_text("2 of 4 done")).to_be_visible(timeout=15000)
+        shot(page, out, "06_setup_two_done")
 
-        # 5. Home and inventory.
-        page.goto(f"{UI}/app")
-        expect(page.get_by_text("Sales, last 14 days")).to_be_visible(timeout=20000)
-        shot(page, out, "08_home")
-        page.goto(f"{UI}/app/inventory")
-        expect(page.get_by_text("Clumping cat litter 25lb").first).to_be_visible(timeout=20000)
-        shot(page, out, "09_inventory")
-        page.get_by_text("Clumping cat litter 25lb").first.click()
-        expect(page.get_by_text("Daily sales (6 weeks)")).to_be_visible(timeout=15000)
-        shot(page, out, "10_item_detail")
+        # 3. Overview: what is short, and — without a supplier yet — the next step instead of a quantity.
+        page.get_by_role("link", name="Go to Overview").click()
+        expect(page.get_by_text(re.compile("items? need attention"))).to_be_visible(timeout=20000)
+        shot(page, out, "07_overview_no_supplier")
 
-        # 6. Scan a barcode → choose what happened → saved with who/why → undo.
-        page.goto(f"{UI}/app/scan")
+        # 4. Inventory: a plain list; details open in a side panel.
+        page.get_by_role("link", name="Inventory").first.click()
+        expect(page.get_by_role("cell", name=re.compile("Clumping cat litter 25lb"))).to_be_visible(timeout=20000)
+        shot(page, out, "08_inventory")
+        page.get_by_role("cell", name=re.compile("Clumping cat litter 25lb")).click()
+        expect(page.get_by_role("dialog")).to_be_visible(timeout=15000)
+        expect(page.get_by_text("Suppliers and cost")).to_be_visible()
+        shot(page, out, "09_item_panel", full=False)
+        page.keyboard.press("Escape")
+
+        # 5. Scan: choose the work mode, scan, confirm the quantity → before → after, undo available.
+        page.get_by_role("link", name="Scan").click()
+        page.get_by_role("radio", name="Damaged").click()
         page.get_by_label("Barcode or SKU").fill("850012345695")
         page.keyboard.press("Enter")  # what a USB / Bluetooth scanner sends
-        expect(page.get_by_text("Clumping cat litter 25lb").first).to_be_visible(timeout=15000)
-        shot(page, out, "11_scan_found")
-        page.get_by_role("button", name=re.compile("^Damaged")).click()
-        page.get_by_label("Quantity").fill("1")
-        page.get_by_label("Reason / note (optional)").fill("bag torn on delivery shelf")
-        page.get_by_role("button", name=re.compile("— save")).click()
-        expect(page.get_by_text(re.compile("Saved: -1"))).to_be_visible(timeout=15000)
-        shot(page, out, "12_scan_saved")
+        expect(page.get_by_label("Quantity")).to_be_visible(timeout=15000)
+        page.get_by_label("Note (optional)").fill("bag torn on delivery shelf")
+        shot(page, out, "10_scan_damaged_mode")
+        page.get_by_role("button", name=re.compile(r"^Save")).click()
+        expect(page.get_by_text(re.compile("Saved — Damaged"))).to_be_visible(timeout=15000)
+        shot(page, out, "11_scan_saved")
         page.get_by_label("Barcode or SKU").fill("999000111222")
         page.keyboard.press("Enter")
         expect(page.get_by_text("No item has barcode 999000111222")).to_be_visible(timeout=15000)
-        shot(page, out, "13_scan_unknown_barcode")
+        shot(page, out, "12_scan_unknown_barcode")
 
-        # 7. Insights.
-        page.goto(f"{UI}/app/insights")
+        # 6. Insights: the sales chart lives here now.
+        page.get_by_role("link", name="Insights").first.click()
         expect(page.get_by_text("Best sellers")).to_be_visible(timeout=20000)
-        shot(page, out, "14_insights")
+        shot(page, out, "13_insights")
 
-        # 8. Order analysis before a supplier exists: says what is missing.
-        page.goto(f"{UI}/app/orders")
-        page.get_by_role("button", name=re.compile("Run order analysis")).click()
-        expect(page.get_by_text("To turn suggestions into orders")).to_be_visible(timeout=30000)
-        shot(page, out, "15_orders_missing_supplier")
-
-        # 9. Add a supplier and its items; add the delivery address.
-        page.goto(f"{UI}/app/suppliers")
+        # 7. Orders › Suppliers: add the supplier and its items; Settings: delivery address, a teammate.
+        page.get_by_role("link", name="Orders").first.click()
+        page.get_by_role("link", name="Suppliers").click()
         page.get_by_role("button", name="Add supplier").first.click()
         page.get_by_label("Supplier name").fill("Riverside Pet Distributors")
         page.get_by_label("Order email").fill("orders@riverside-pet.example.com")
@@ -146,7 +140,7 @@ def run(page: Page, browser, out: Path, email: str) -> None:
         page.get_by_label("Lead time (days)").fill("3")
         page.get_by_label("Minimum order ($)").fill("100")
         page.get_by_label("Shipping terms").fill("Free over $300, else $18")
-        shot(page, out, "16_supplier_new")
+        shot(page, out, "14_supplier_new")
         page.get_by_role("button", name="Save supplier").click()
         expect(page.get_by_text("Items and prices")).to_be_visible(timeout=20000)
         for item, sku, per, price in [("Clumping cat litter 25lb", "RP-CL25", "4", "58.00"), ("Dental chews large 10ct", "RP-DC10", "12", "66.00"),
@@ -159,7 +153,7 @@ def run(page: Page, browser, out: Path, email: str) -> None:
             page.get_by_label(re.compile("Price per")).fill(price)
             page.get_by_role("button", name="Add", exact=True).click()
             expect(page.get_by_text(sku)).to_be_visible(timeout=15000)
-        shot(page, out, "17_supplier_items")
+        shot(page, out, "15_supplier_items")
         page.goto(f"{UI}/app/settings")
         page.get_by_label("Street").fill("418 Atlantic Ave")
         page.get_by_label("City").fill("Brooklyn")
@@ -167,22 +161,24 @@ def run(page: Page, browser, out: Path, email: str) -> None:
         page.get_by_label("ZIP").fill("11217")
         page.get_by_role("button", name="Save", exact=True).click()
         expect(page.get_by_text("Saved.")).to_be_visible(timeout=15000)
-        # A teammate: the owner gets a one-time link to pass on (nobody else can claim the email).
+        shot(page, out, "16_settings_store")
+        page.get_by_role("link", name="Team").click()
         page.get_by_label("Invite by email").fill(f"sam+{uuid.uuid4().hex[:6]}@cornerpets.example")
         page.get_by_role("button", name="Add").click()
         expect(page.get_by_text(re.compile("Send this link to"))).to_be_visible(timeout=15000)
-        shot(page, out, "18_settings")
+        shot(page, out, "17_settings_team_invite")
 
-        # 10. Order analysis → change one quantity → draft → approve (test mode).
-        page.goto(f"{UI}/app/orders")
-        page.get_by_role("button", name=re.compile("Run again|Run order analysis")).click()
-        page.wait_for_timeout(2500)
-        expect(page.get_by_text("Suggested orders")).to_be_visible(timeout=30000)
-        shot(page, out, "19_order_suggestions")
+        # 8. Overview again: what to order, how much, and what it costs — then the plan → drafts.
+        page.get_by_role("link", name="Overview").first.click()
+        expect(page.get_by_text("Suggested total")).to_be_visible(timeout=20000)
+        shot(page, out, "18_overview")
+        page.get_by_role("link", name="Review reorder plan").first.click()
+        expect(page.get_by_text("Drafts to create")).to_be_visible(timeout=30000)
+        shot(page, out, "19_reorder_plan")
         first_qty = page.get_by_label(re.compile("^Quantity for ")).first
         first_qty.fill(str(int(float(first_qty.input_value() or "1")) + 1))
         page.get_by_role("button", name="Why?").first.click()
-        shot(page, out, "20_order_suggestions_edited_why")
+        shot(page, out, "20_reorder_plan_edited_why")
         page.get_by_role("button", name=re.compile("Create .* order draft")).click()
         expect(page.get_by_role("button", name="Submit for approval")).to_be_visible(timeout=20000)
         shot(page, out, "21_order_draft")
@@ -190,20 +186,23 @@ def run(page: Page, browser, out: Path, email: str) -> None:
         approve = page.get_by_role("button", name=re.compile("Approve version"))
         expect(approve).to_be_enabled(timeout=15000)
         approve.click()
-        expect(page.get_by_text(re.compile(r"Sent \(test mode\)")).first).to_be_visible(timeout=30000)
+        expect(page.get_by_text("Test order — not sent.")).to_be_visible(timeout=30000)
         shot(page, out, "22_order_approved_test_mode")
+        page.goto(f"{UI}/app/orders?tab=progress")
+        expect(page.get_by_text("Riverside Pet Distributors").first).to_be_visible(timeout=15000)
+        shot(page, out, "23_orders_in_progress")
+        page.get_by_role("link", name="Overview").first.click()
+        expect(page.get_by_role("heading", name="On the way")).to_be_visible(timeout=15000)
+        shot(page, out, "24_overview_after_order")
 
-        # 11. Phone width: home and scan.
-        phone = browser.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=2)
-        phone.context.add_cookies(page.context.cookies())
-        phone.goto(f"{UI}/app")
-        phone.evaluate("(s) => localStorage.setItem('tabula.session.v1', s)", page.evaluate("localStorage.getItem('tabula.session.v1')"))
-        phone.goto(f"{UI}/app")
-        expect(phone.get_by_text("Runs out soonest")).to_be_visible(timeout=20000)
-        shot(phone, out, "23_phone_home", full=False)
-        phone.goto(f"{UI}/app/inventory")
-        expect(phone.get_by_text("Clumping cat litter 25lb").last).to_be_visible(timeout=20000)
-        shot(phone, out, "24_phone_inventory", full=False)
+        # 9. Phone width: Overview and the reorder list, Inventory.
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.reload()
+        expect(page.get_by_role("heading", name="On the way")).to_be_visible(timeout=20000)
+        shot(page, out, "25_phone_overview", full=False)
+        page.goto(f"{UI}/app/inventory")
+        expect(page.get_by_text("Clumping cat litter 25lb").last).to_be_visible(timeout=20000)
+        shot(page, out, "26_phone_inventory", full=False)
 
 
 if __name__ == "__main__":

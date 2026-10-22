@@ -74,42 +74,41 @@ def main() -> None:
         page.wait_for_url(re.compile(r"/app$"), timeout=180000)
 
         # 2. Home: what needs the owner, before anything is computed.
-        expect(page.get_by_text("Runs out soonest")).to_be_visible(timeout=15000)
-        shot(page, out, "02_home_today_before_analysis")
-        page.goto(f"{UI}/app/orders")
-        page.get_by_role("button", name=re.compile("Run order analysis|Run again")).click()
-        expect(page.get_by_text("Suggested orders")).to_be_visible(timeout=30000)
-        shot(page, out, "03_order_suggestions")
+        expect(page.get_by_text("Suggested total")).to_be_visible(timeout=15000)
+        shot(page, out, "02_overview")
+        page.get_by_role("link", name="Review reorder plan").first.click()
+        expect(page.get_by_text("Drafts to create")).to_be_visible(timeout=30000)
+        shot(page, out, "03_reorder_plan")
 
         # 3. Drafts → the Phillips order approved and kept in test mode (not emailed).
         page.get_by_role("button", name=re.compile("Create .* order draft")).click()
-        page.wait_for_url(re.compile("/app/orders/list"), timeout=15000)
-        page.get_by_role("link", name=re.compile("Phillips")).click()
+        page.wait_for_url(re.compile("/app/orders$"), timeout=15000)
+        page.get_by_role("cell", name=re.compile("Phillips")).first.click()
         page.get_by_role("button", name="Submit for approval").click()
         approve = page.get_by_role("button", name=re.compile("Approve version"))
         expect(approve).to_be_enabled(timeout=15000)
         approve.click()
         expect(page.get_by_text(re.compile(r"Sent \(test mode\)")).first).to_be_visible(timeout=30000)
         phillips_url = page.url
-        number = page.locator("h1").inner_text().split()[-1]  # e.g. PO-00001
+        number = page.locator("h1").inner_text().split()[0]  # e.g. PO-00001
 
         # 4. The store's own open-orders file lists that order as "PO00001" — only the number nearly matches.
         near = number.replace("-", "")
         path = csv_file([["Supplier", "PO #", "SKU", "Qty Remaining", "Confirmed"],
                          ["Phillips Pet Supply", near, "LITTER-20", "84", "no"]], "open_orders_from_pos.csv")
         import_file(page, "open_orders", Path(path), {"Quantities are counted in": "base", "This file lists": "none"}, now=True)
-        page.goto(f"{UI}/app/orders")
+        page.goto(f"{UI}/app/orders/plan")
         expect(page.get_by_text("Is this export order one of your Tabula orders?")).to_be_visible(timeout=15000)
         shot(page, out, "05_possible_duplicate_order")
         page.get_by_role("button", name=f"Same order as {number}").click()
         page.wait_for_timeout(1500)
-        page.get_by_role("button", name=re.compile("Run again|Run order analysis")).click()
-        page.wait_for_timeout(1500)
+        page.get_by_role("button", name="Recalculate").click()
+        page.wait_for_timeout(2500)
         litter = page.locator("tr", has_text="LITTER-20").first
         if litter.count():
             litter.get_by_role("button", name="Why?").click()
         else:
-            page.locator("li", has_text="LITTER-20").first.get_by_role("button", name="Details").click()
+            page.locator("li", has_text="Clumping cat litter").first.get_by_role("button", name="Details").click()
         shot(page, out, "06_after_same_order_decision")
 
         # 5. A sales file: the preview suggests the file's own date range; the owner confirms it.
@@ -122,7 +121,7 @@ def main() -> None:
         import_file(page, "sales", Path(path), {}, suggested_dates=True, shot_as=lambda: shot(page, out, "07_import_sales_suggested_dates"))
 
         # 6. Square (mock): connect and link the store — its stock now belongs to Square (read-only).
-        page.goto(f"{UI}/app/data/square")
+        page.goto(f"{UI}/app/settings/data/square")
         page.get_by_role("button", name=re.compile("Connect Square")).click()
         expect(page.get_by_text("Mock Pets")).to_be_visible(timeout=15000)
         page.get_by_label("Square location").select_option(index=1)
@@ -149,7 +148,7 @@ def main() -> None:
         shot(page, out, "11_pos_reconciled")
 
         page.goto(f"{UI}/app")
-        expect(page.get_by_text("Runs out soonest")).to_be_visible(timeout=15000)
+        expect(page.get_by_role("heading", name="On the way")).to_be_visible(timeout=15000)
         shot(page, out, "12_home_end")
         status, _ = call(page, "GET", "/attention?location_id=" + page.evaluate("JSON.parse(localStorage.getItem('tabula.session.v1')).locationId"))
         print("attention endpoint ->", status)

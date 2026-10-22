@@ -26,18 +26,19 @@ scripts/restart_api.sh    # restart only the API after backend changes (same dev
 
 Open http://127.0.0.1:5173/signup and create an account (email + password, 10+ characters). Then:
 
-1. **Store setup** — name, what you sell, time zone, currency → straight to **Data**.
-2. **Data** — Excel/CSV upload or a shared Google Sheets link (Square: demo connection until Sandbox settings exist, see `docs/SQUARE_SETUP.md`). Columns are matched automatically; the review screen shows unused columns and why, and asks only what it must (e.g. "This was true at", the sales period).
-3. **Home / Inventory** — stock state, what runs out, sales trend, what's on the way; every number shows how old it is.
-4. **Scan** — USB/Bluetooth scanner or typing (camera where the browser supports it). A scan only finds the item; you pick stock in / sold or used / damaged / count and the quantity. Unknown barcodes can be added or attached to an item. Every change records who and why and can be undone. Stores whose stock is owned by Square are read-only here.
-5. **Insights** → **Orders** — run the order analysis, edit quantities, create drafts, owner approves.
+1. **Store details** — name, what you sell, time zone, currency → **Set up your store**: a checklist (stock file, sales history, suppliers and prices, delivery address); each step says what it unlocks. Stores that are set up open straight on **Overview**.
+2. **Overview** — what is short, what to order (suggested quantity, cases, estimated cost, supplier — from the same plan engine, not saved) and what is on the way with expected dates; missing data shows the next step instead of a number. **Review reorder plan** is the main button.
+3. **Inventory** — search, filter, sort; an item opens in a side panel (barcode, suppliers and cost, sales, expected stock, changes, orders). **Scan** is the main button: pick the work mode (look up / stock in / sold or used / damaged / count), scan, confirm the quantity; each change shows before → after and can be undone. USB/Bluetooth scanners and typing work; camera where the browser supports it. Square-owned stock is read-only here.
+4. **Orders** — *Needs review / In progress / Done* with amount, status, expected arrival and the next step; *Suppliers* is a tab here. The reorder plan turns into one draft per supplier with your quantities; the order page shows items, cost and delivery first and folds the calculation, the kept email and the audit trail away.
+5. **Insights** — sales trend, period comparison (per day with data), best and slow sellers, expected stockouts.
+6. **Settings** — store details and delivery address, **Data sources** (Excel/CSV, shared Google Sheets link, Square: demo connection until Sandbox settings exist, see `docs/SQUARE_SETUP.md`), **Team**.
 
 - **Test mode**: an approved order is kept in Tabula as a test message and never emailed. No payments.
 - **Sample store**: on "Your stores", *Create a sample store* builds a fictional pet shop owned by your account and marked as a sample everywhere.
-- **Team**: Settings → Invite gives the owner a one-time sign-up link to pass on (Tabula doesn't send email yet); without it nobody can sign up with that address.
+- **Team**: Settings › Team → Invite gives the owner a one-time sign-up link to pass on (Tabula doesn't send email yet); without it nobody can sign up with that address.
 - Email-only **demo sign-in** exists only with `TABULA_AUTH_MODE=dev` on this machine (loopback); `TABULA_AUTH_MODE=password` turns it off. Not yet: email verification, password reset.
 - Browser walkthroughs (screenshots, `PLAYWRIGHT_CHANNEL=chrome` uses the installed Chrome):
-  - `scripts/ui_walkthrough_owner.py` — sign up → own files → inventory → barcode → insights → supplier → draft → approve (`docs/screenshots/owner-app/`)
+  - `scripts/ui_walkthrough_owner.py` — sign up → setup with own files → Overview → inventory panel → scan → insights → supplier → reorder plan → draft → approve (`docs/screenshots/owner-app/`)
   - `scripts/ui_walkthrough.py` — order → supplier reply → receiving (`docs/screenshots/cp7/`; seeds its own demo store)
   - `scripts/ui_walkthrough_store.py` — sample store, export-order matching, Square (demo) receiving check (`docs/screenshots/store-readiness/`)
 - Square Sandbox: settings and the one-command check in `docs/SQUARE_SETUP.md` §6 (`scripts/square_sandbox_check.py`).

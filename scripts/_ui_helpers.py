@@ -50,7 +50,7 @@ def demo_sign_in(page: Page, user: str, store: str | None = None, tenant_id: str
 def import_file(page: Page, kind: str, path: Path, answers: dict[str, str], *, now: bool = False,
                 suggested_dates: bool = False, shot_as=None) -> None:
     """Upload through the import wizard, answer its questions by label, import, wait until done."""
-    page.goto(f"{UI}/app/data/import")
+    page.goto(f"{UI}/app/settings/data/import")
     page.get_by_role("button", name=re.compile(KIND_CARD[kind])).click()
     page.get_by_label("File").set_input_files(str(path))
     page.get_by_role("button", name="Check the file").click()

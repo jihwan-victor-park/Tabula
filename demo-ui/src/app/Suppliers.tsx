@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { SymbolIcon } from '../components/ui';
 import { api, loadSession, type VariantLite } from '../ops/api';
 import { Badge, Button, EmptyState, ErrorBox, Field, Notice, OpsShell, Panel, RequireSession, Skeleton, inputCls, money, num } from '../ops/kit';
+import { OrdersShell } from './Orders';
 
 type Supplier = {
   id: string; name: string; relationship_status: string; ordering_channel: string | null; merchant_account_number: string | null;
@@ -24,25 +25,26 @@ export function SuppliersPage() {
   const list = useQuery({ queryKey: ['suppliers', s?.tenantId], queryFn: () => api<Supplier[]>('/suppliers'), enabled: !!s?.tenantId });
   const [adding, setAdding] = useState(false);
   return (
-    <OpsShell active="suppliers" title="Suppliers" subtitle="Who you order from and on what terms." actions={<Button onClick={() => setAdding(true)}>Add supplier</Button>}>
-      <RequireSession>
+    <OrdersShell active="suppliers" actions={<Button onClick={() => setAdding(true)}>Add supplier</Button>}>
         {adding && <NewSupplier onClose={() => setAdding(false)} />}
         {list.isLoading && <Skeleton rows={3} />}
         <ErrorBox error={list.error} />
         {list.data?.length === 0 && !adding && <Panel><EmptyState icon="storefront" title="No suppliers yet" body="Add the distributors and brands you buy from. Order suggestions need at least one supplier with prices."><Button onClick={() => setAdding(true)}>Add your first supplier</Button></EmptyState></Panel>}
-        <div className="grid gap-3 md:grid-cols-2">
-          {list.data?.map((x) => (
-            <Link key={x.id} to={`/app/suppliers/${x.id}`} className="rounded-[18px] border border-[#E8E0D8] bg-white p-5 hover:border-[#D3C5B8]">
-              <div className="flex items-start justify-between gap-2"><div className="text-[16px] font-semibold">{x.name}</div><Badge tone={STATUS_TONE[x.relationship_status]}>{STATUS_LABEL[x.relationship_status]}</Badge></div>
-              <div className="mt-2 text-[13px] text-[#5E6E78]">
-                {x.default_lead_time_days != null ? `${x.default_lead_time_days}-day lead time` : 'lead time not set'} · {x.min_order_amount != null ? `min ${money(x.min_order_amount, x.currency)}` : 'minimum not set'}
-                {x.payment_terms === 'net' && x.payment_net_days ? ` · net ${x.payment_net_days}` : ''}
-              </div>
-            </Link>
-          ))}
-        </div>
-      </RequireSession>
-    </OpsShell>
+        {list.data && list.data.length > 0 && (
+          <Panel padded={false}>
+            <ul className="divide-y divide-[#EDEFF2]">
+              {list.data.map((x) => (
+                <li key={x.id}><Link to={`/app/orders/suppliers/${x.id}`} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-[#F8F9FA] md:px-5">
+                  <span><span className="block font-medium">{x.name}</span>
+                    <span className="text-[12px] text-[#66707A]">{x.default_lead_time_days != null ? `${x.default_lead_time_days}-day lead time` : 'lead time not set'} · {x.min_order_amount != null ? `min ${money(x.min_order_amount, x.currency)}` : 'no minimum set'}
+                      {x.payment_terms === 'net' && x.payment_net_days ? ` · net ${x.payment_net_days}` : ''}</span></span>
+                  <Badge tone={STATUS_TONE[x.relationship_status]}>{STATUS_LABEL[x.relationship_status]}</Badge>
+                </Link></li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+    </OrdersShell>
   );
 }
 
@@ -70,10 +72,10 @@ function NewSupplier({ onClose }: { onClose: () => void }) {
       await api(`/suppliers/${sup.id}/status`, { body: { version: fresh.version, status: 'approved' } });
       return sup;
     },
-    onSuccess: (sup) => { qc.invalidateQueries({ queryKey: ['suppliers'] }); qc.invalidateQueries({ queryKey: ['readiness'] }); navigate(`/app/suppliers/${sup.id}`); },
+    onSuccess: (sup) => { qc.invalidateQueries({ queryKey: ['suppliers'] }); qc.invalidateQueries({ queryKey: ['readiness'] }); navigate(`/app/orders/suppliers/${sup.id}`); },
   });
   return (
-    <Panel title="Add a supplier" aside={<button className="text-[13px] text-[#5E6E78] underline" onClick={onClose}>Cancel</button>}>
+    <Panel title="Add a supplier" aside={<button className="text-[13px] text-[#66707A] underline" onClick={onClose}>Cancel</button>}>
       <form className="grid gap-4 md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
         <Field label="Supplier name"><input className={inputCls} value={f.name} onChange={(e) => set({ name: e.target.value })} required /></Field>
         <Field label="Order email" hint="Where orders go. By saving you confirm this is their ordering address."><input className={inputCls} type="email" value={f.email} onChange={(e) => set({ email: e.target.value })} required /></Field>
@@ -91,7 +93,7 @@ function NewSupplier({ onClose }: { onClose: () => void }) {
         <Field label="Delivery days" hint="Leave empty if they deliver any day.">
           <div className="flex flex-wrap gap-1">{DAYS.map((d, i) => (
             <button type="button" key={d} onClick={() => set({ days: f.days.includes(i + 1) ? f.days.filter((x) => x !== i + 1) : [...f.days, i + 1].sort() })}
-              className={`rounded-[8px] border px-2.5 py-1.5 text-[13px] ${f.days.includes(i + 1) ? 'border-[#E25C3F] bg-[#FCE9E3] text-[#B23F27]' : 'border-[#DCD2C8]'}`}>{d}</button>))}</div>
+              className={`rounded-[8px] border px-2.5 py-1.5 text-[13px] ${f.days.includes(i + 1) ? 'border-[#2457C5] bg-[#EAF0FB] text-[#2457C5]' : 'border-[#D5DAE0]'}`}>{d}</button>))}</div>
         </Field>
         <Field label="Shipping terms" hint="e.g. free over $250, else $15"><input className={inputCls} value={f.freight} onChange={(e) => set({ freight: e.target.value })} /></Field>
         <div className="md:col-span-2"><ErrorBox error={create.error} /></div>
@@ -115,17 +117,17 @@ export function SupplierPage() {
   const x = sup.data;
   const byId = Object.fromEntries((variants.data ?? []).map((v) => [v.id, v]));
   return (
-    <OpsShell active="suppliers" title={x?.name ?? 'Supplier'} actions={<Link to="/app/suppliers" className="text-[14px] font-semibold text-[#5E6E78]">← Suppliers</Link>}>
+    <OpsShell active="orders" title={x?.name ?? 'Supplier'} subtitle={<Link to="/app/orders/suppliers" className="hover:underline">← Suppliers</Link>}>
       <RequireSession>
         {sup.isLoading && <Skeleton rows={3} />}
         <ErrorBox error={sup.error} />
         {x && (
           <Panel title="Terms" aside={<Badge tone={STATUS_TONE[x.relationship_status]}>{STATUS_LABEL[x.relationship_status]}</Badge>}>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[14px] md:grid-cols-4">
-              <div><dt className="text-[12px] text-[#5E6E78]">Order email</dt><dd>{contacts.data?.find((c) => c.is_order_recipient && c.verified_at)?.email ?? '—'}</dd></div>
-              <div><dt className="text-[12px] text-[#5E6E78]">Account #</dt><dd>{x.merchant_account_number ?? 'none used'}</dd></div>
-              <div><dt className="text-[12px] text-[#5E6E78]">Lead time</dt><dd>{x.default_lead_time_days ?? '—'} days{x.delivery_weekdays.length ? ` · delivers ${x.delivery_weekdays.map((d) => DAYS[d - 1]).join(', ')}` : ''}</dd></div>
-              <div><dt className="text-[12px] text-[#5E6E78]">Minimum · payment</dt><dd>{money(x.min_order_amount, x.currency)} · {x.payment_terms === 'net' ? `net ${x.payment_net_days}` : x.payment_terms}</dd></div>
+              <div><dt className="text-[12px] text-[#66707A]">Order email</dt><dd>{contacts.data?.find((c) => c.is_order_recipient && c.verified_at)?.email ?? '—'}</dd></div>
+              <div><dt className="text-[12px] text-[#66707A]">Account #</dt><dd>{x.merchant_account_number ?? 'none used'}</dd></div>
+              <div><dt className="text-[12px] text-[#66707A]">Lead time</dt><dd>{x.default_lead_time_days ?? '—'} days{x.delivery_weekdays.length ? ` · delivers ${x.delivery_weekdays.map((d) => DAYS[d - 1]).join(', ')}` : ''}</dd></div>
+              <div><dt className="text-[12px] text-[#66707A]">Minimum · payment</dt><dd>{money(x.min_order_amount, x.currency)} · {x.payment_terms === 'net' ? `net ${x.payment_net_days}` : x.payment_terms}</dd></div>
             </dl>
             {x.relationship_status !== 'approved' && check.data && (
               <div className="mt-4">{check.data.approvable ? <Button onClick={() => approve.mutate()} loading={approve.isPending}>Mark ready to order</Button>
@@ -133,9 +135,9 @@ export function SupplierPage() {
             )}
           </Panel>
         )}
-        <Panel title="Items and prices" aside={<Link to={`/app/data/import?kind=supplier_price_list&supplier=${id}`}><Button variant="secondary"><SymbolIcon icon="upload_file" family="rounded" className="text-[18px]" />Upload price list</Button></Link>}>
-          {items.data?.length === 0 && <div className="mb-3 text-[14px] text-[#5E6E78]">No items yet. Upload their price list, or add items one by one below.</div>}
-          <ul className="flex flex-col divide-y divide-[#F1EBE4]">
+        <Panel title="Items and prices" aside={<Link to={`/app/settings/data/import?kind=supplier_price_list&supplier=${id}`}><Button variant="secondary"><SymbolIcon icon="upload_file" family="rounded" className="text-[18px]" />Upload price list</Button></Link>}>
+          {items.data?.length === 0 && <div className="mb-3 text-[14px] text-[#66707A]">No items yet. Upload their price list, or add items one by one below.</div>}
+          <ul className="flex flex-col divide-y divide-[#EDEFF2]">
             {items.data?.map((it) => <ItemRow key={it.id} it={it} variant={it.variant_id ? byId[it.variant_id] : undefined} variants={variants.data ?? []} currency={x?.currency ?? 'USD'} onChange={refresh} />)}
           </ul>
           <AddItem supplierId={id!} variants={variants.data ?? []} currency={x?.currency ?? 'USD'} onDone={refresh} />
@@ -153,7 +155,7 @@ function ItemRow({ it, variant, variants, currency, onChange }: { it: Item; vari
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-3 text-[14px]">
       <span className="min-w-0"><span className="block font-semibold">{it.supplier_sku}{it.description ? ` · ${it.description}` : ''}</span>
-        <span className="text-[12px] text-[#5E6E78]">{it.order_uom} of {num(it.units_per_order_uom)} · {current ? `${money(current.unit_price, currency)} per ${it.order_uom}` : 'no price yet'}</span></span>
+        <span className="text-[12px] text-[#66707A]">{it.order_uom} of {num(it.units_per_order_uom)} · {current ? `${money(current.unit_price, currency)} per ${it.order_uom}` : 'no price yet'}</span></span>
       {it.mapping_status === 'confirmed' ? <span className="text-[13px]">Your item: <b>{variant?.name ?? '—'}</b></span> : (
         <span className="flex flex-wrap items-center gap-2">
           <select aria-label={`Your item for ${it.supplier_sku}`} className={inputCls} value={pick} onChange={(e) => setPick(e.target.value)}>
@@ -179,7 +181,7 @@ function AddItem({ supplierId, variants, currency, onDone }: { supplierId: strin
   });
   if (!open) return <div className="mt-3"><Button variant="ghost" onClick={() => setOpen(true)}>+ Add an item</Button></div>;
   return (
-    <form className="mt-4 grid gap-3 rounded-[14px] bg-[#FBF8F5] p-4 md:grid-cols-[1.5fr_1fr_100px_90px_120px_auto] md:items-end" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
+    <form className="mt-4 grid gap-3 rounded-[8px] bg-[#F8F9FA] p-4 md:grid-cols-[1.5fr_1fr_100px_90px_120px_auto] md:items-end" onSubmit={(e) => { e.preventDefault(); add.mutate(); }}>
       <Field label="Your item"><select className={inputCls} value={f.variant} onChange={(e) => setF({ ...f, variant: e.target.value })} required>
         <option value="">Choose…</option>{variants.map((v) => <option key={v.id} value={v.id}>{v.name} ({v.sku})</option>)}</select></Field>
       <Field label="Their SKU"><input className={inputCls} value={f.sku} onChange={(e) => setF({ ...f, sku: e.target.value })} required /></Field>

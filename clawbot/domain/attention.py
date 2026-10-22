@@ -62,10 +62,10 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
             ConnectorAccount.tenant_id == tenant_id, ConnectorLocationLink.location_id == location_id)):
         if acct.status != "active":
             out.append(_item("connection", "high", f"Square connection is {acct.status.replace('_', ' ')}",
-                             acct.last_error or "Square stopped accepting Tabula's access.", "Reconnect", "/app/data/square"))
+                             acct.last_error or "Square stopped accepting Tabula's access.", "Reconnect", "/app/settings/data/square"))
         elif acct.last_error:
             out.append(_item("connection", "medium", "Square sync is failing", acct.last_error[:300], "Open connections",
-                             "/app/data/square"))
+                             "/app/settings/data/square"))
 
     # --- inputs
     pending_imports = session.scalars(select(Import).where(Import.tenant_id == tenant_id, Import.status == "uploaded")).all()
@@ -73,7 +73,7 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
         if imp.context.get("location_id") not in (None, str(location_id)):
             continue  # another store's file
         out.append(_item("import", "medium", f"Review {imp.file_name}", "Uploaded but not confirmed; nothing from it is used yet.",
-                         "Review the file", "/app/data/import", ref=str(imp.id)))
+                         "Review the file", "/app/settings/data/import", ref=str(imp.id)))
     location = session.get(Location, location_id)
     if location.inventory_write_owner == "tabula":
         last_stock = max(filter(None, [
@@ -92,7 +92,7 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                          f"Last stock reading{' from ' + location.inventory_write_owner if location.inventory_write_owner != 'tabula' else ''}: "
                          f"{_age(last_stock, now)}. Recommendations use it as the starting stock.",
                          "Upload a stock count" if location.inventory_write_owner == "tabula" else "Sync stock from the POS",
-                         "/app/data/import" if location.inventory_write_owner == "tabula" else "/app/data/square"))
+                         "/app/settings/data/import" if location.inventory_write_owner == "tabula" else "/app/settings/data/square"))
     last_sale = session.scalar(select(func.max(SalesLine.sold_at)).where(
         SalesLine.tenant_id == tenant_id, SalesLine.location_id == location_id))
     if last_sale is None or now - last_sale > SALES_STALE:
@@ -100,20 +100,20 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                          "No sales yet" if last_sale is None else "Sales are not up to date",
                          f"Latest sale recorded: {_age(last_sale, now)}. Demand is estimated from sales.",
                          "Sync sales from Square" if location.sales_feed == "square" else "Import sales or connect Square",
-                         "/app/data/square" if location.sales_feed == "square" else "/app/data/import"))
+                         "/app/settings/data/square" if location.sales_feed == "square" else "/app/settings/data/import"))
 
     # --- the plan
     run = session.scalars(select(ReplenishmentRun).where(
         ReplenishmentRun.tenant_id == tenant_id, ReplenishmentRun.location_id == location_id,
         ReplenishmentRun.status == "current")).one_or_none()
     if run is None:
-        out.append(_item("plan", "medium", "Run your first order analysis", "See what to order once sales and a stock count are in.",
-                         "Order suggestions", "/app/orders"))
+        out.append(_item("plan", "medium", "Review your reorder plan", "Suggested quantities per supplier, ready to turn into drafts.",
+                         "Open the reorder plan", "/app/orders/plan"))
     else:
         if run.data_version != data_version.current(session, tenant_id):
-            out.append(_item("plan", "medium", "Order suggestions are out of date",
-                             "Stock, sales, orders or supplier answers changed since the last analysis.",
-                             "Run it again", "/app/orders"))
+            out.append(_item("plan", "medium", "The reorder plan has changed",
+                             "Stock, sales, orders or supplier answers changed since you last reviewed it.",
+                             "Review the plan", "/app/orders/plan"))
         for line in session.scalars(select(ReplenishmentLine).where(
                 ReplenishmentLine.run_id == run.id, ReplenishmentLine.status == "on_hold")):
             refs = [r["message"] for r in line.result.get("reasons", []) if r["code"] in ("unconfirmed_open_order",
@@ -121,7 +121,7 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
                                                                                          "overdue_delivery")]
             out.append(_item("held", "medium", f"{skus.get(line.variant_id, '?')}: reorder on hold",
                              "Already ordered, but not confirmed or not arriving on schedule. " + " ".join(refs[:2]),
-                             "Record the supplier's answer", "/app/orders/list"))
+                             "Record the supplier's answer", "/app/orders?tab=progress"))
 
     # --- orders
     for po in session.scalars(select(PurchaseOrder).where(
@@ -182,7 +182,7 @@ def for_location(session: Session, *, tenant_id: uuid.UUID, location_id: uuid.UU
         if link.status == "suggested":
             out.append(_item("link", "high", f"Is open order {number} the same as {', '.join(link.candidates)}?",
                              "The numbers nearly match. It is not counted until you decide.", "Decide",
-                             "/app/orders#links", supplier_id=str(supplier_id), external_po_number=number,
+                             "/app/orders/plan#links", supplier_id=str(supplier_id), external_po_number=number,
                              candidates=list(link.candidates)))
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted(out, key=lambda i: order[i["severity"]])

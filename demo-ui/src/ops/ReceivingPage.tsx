@@ -23,9 +23,9 @@ export function ReceivingPage() {
           {list?.length === 0 && <EmptyState icon="local_shipping" title="Nothing is on its way" body="Sent orders show up here until everything has arrived." />}
           <ul className="flex flex-col gap-2">
             {list?.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-[#E8D4C6] px-4 py-3 text-[13px]">
-                <div><Link className="font-medium text-[#E8654A] underline" to={`/app/receiving/${p.id}`}>{p.number}</Link> · {p.supplier} → {p.ship_to}
-                  <div className="text-[12px] text-[#5C7A8A]">{p.expected_lines} line(s) expected{p.awaiting_reply ? ' · supplier has not confirmed everything' : ''}{p.open_issues ? ` · ${p.open_issues} open issue(s)` : ''}</div></div>
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[#E2E5E9] px-4 py-3 text-[13px]">
+                <div><Link className="font-medium text-[#2457C5] underline" to={`/app/receiving/${p.id}`}>{p.number}</Link> · {p.supplier} → {p.ship_to}
+                  <div className="text-[12px] text-[#66707A]">{p.expected_lines} line(s) expected{p.awaiting_reply ? ' · supplier has not confirmed everything' : ''}{p.open_issues ? ` · ${p.open_issues} open issue(s)` : ''}</div></div>
                 <StatusChip status={p.status} />
               </li>
             ))}
@@ -71,8 +71,8 @@ export function ReceiveOrderPage() {
   const posEntered = useMutation({ mutationFn: (lineId: string) => api(`/receipt-lines/${lineId}/pos-entered`, { method: 'POST' }), onSuccess: refresh });
 
   return (
-    <OpsShell active="receiving" title={po.data ? `Receive ${po.data.number}` : 'Receive'} icon="inventory_2"
-              actions={<Link className="text-[13px] text-[#5C7A8A] underline" to={`/app/orders/${id}`}>Order</Link>}>
+    <OpsShell active="orders" title={po.data ? <>Record a delivery <span className="font-normal text-[#66707A]">· {po.data.number} {po.data.supplier}</span></> : 'Record a delivery'}
+              subtitle={<Link className="hover:underline" to={`/app/orders/${id}`}>← Order {po.data?.number ?? ''}</Link>}>
       <RequireSession>
         {po.isLoading && <Panel><Loading /></Panel>}
         <ErrorBox error={po.error} onRetry={() => po.refetch()} />
@@ -84,23 +84,23 @@ export function ReceiveOrderPage() {
             <>
               <div className="flex flex-wrap items-center gap-3"><StatusChip status={p.status} /><span className="text-[13px]">{p.supplier} → {p.ship_to}</span></div>
               {p.status === 'test_sent' && <Notice tone="info">Test order (capture mode): the supplier never received it — recording a delivery here is for testing the flow.</Notice>}
-              <Panel title="What arrived" aside={<span className="font-mono text-[11px] text-[#5C7A8A]">receipt key {key.slice(0, 8)}…</span>}>
+              <Panel title="What arrived" aside={<span className="font-mono text-[11px] text-[#66707A]">receipt key {key.slice(0, 8)}…</span>}>
                 <div className="overflow-x-auto">
                   <table className="[&_td]:pr-3 [&_th]:pr-3 w-full min-w-[760px] text-[13px]">
-                    <thead><tr className="text-left text-[#5C7A8A]"><th className="py-2">#</th><th>Item</th><th className="text-right">Still expected</th><th className="text-right">Not confirmed</th><th className="text-right">Already arrived</th><th className="text-right">Arrived now</th><th className="text-right">of which damaged</th><th className="text-right">Sellable</th></tr></thead>
+                    <thead><tr className="text-left text-[12px] font-medium text-[#66707A]"><th className="py-2">#</th><th>Item</th><th className="text-right">Still expected</th><th className="text-right">Not confirmed</th><th className="text-right">Already arrived</th><th className="text-right">Arrived now</th><th className="text-right">of which damaged</th><th className="text-right">Sellable</th></tr></thead>
                     <tbody>
                       {pr.lines.map((l) => {
                         const a = Number(arrived[l.line_no] || 0), d = Number(damaged[l.line_no] || 0);
                         return (
-                          <tr key={l.line_no} className="border-t border-[#F1E4DA]">
+                          <tr key={l.line_no} className="border-t border-[#EDEFF2]">
                             <td className="py-2">{l.line_no}</td>
-                            <td><b>{l.sku}</b> <span className="font-mono text-[12px] text-[#5C7A8A]">{l.supplier_sku}</span><div className="text-[11px] text-[#5C7A8A]">{l.order_uom} of {num(l.units_per_order_uom)}</div></td>
-                            <td className="text-right font-mono">{num(l.outstanding)}</td>
-                            <td className="text-right font-mono text-[#8A5A00]">{Number(l.unconfirmed) > 0 ? num(l.unconfirmed) : ''}</td>
-                            <td className="text-right font-mono">{num(l.received)}</td>
-                            <td className="text-right"><input aria-label={`Arrived for line ${l.line_no}`} inputMode="decimal" className="w-[70px] rounded-[8px] border border-[#E8D4C6] px-2 py-1 text-right font-mono" value={arrived[l.line_no] ?? ''} onChange={(e) => setArrived((x) => ({ ...x, [l.line_no]: e.target.value }))} /></td>
-                            <td className="text-right"><input aria-label={`Damaged for line ${l.line_no}`} inputMode="decimal" className="w-[70px] rounded-[8px] border border-[#E8D4C6] px-2 py-1 text-right font-mono" value={damaged[l.line_no] ?? ''} onChange={(e) => setDamaged((x) => ({ ...x, [l.line_no]: e.target.value }))} /></td>
-                            <td className="text-right font-mono">{a > 0 ? `${num(String(a - d))} ${l.order_uom} = ${num(String((a - d) * Number(l.units_per_order_uom)))} units` : ''}</td>
+                            <td><b>{l.sku}</b> <span className="text-[12px] font-normal text-[#66707A]">{l.supplier_sku}</span><div className="text-[11px] text-[#66707A]">{l.order_uom} of {num(l.units_per_order_uom)}</div></td>
+                            <td className="text-right tabular-nums">{num(l.outstanding)}</td>
+                            <td className="text-right tabular-nums text-[#A15C07]">{Number(l.unconfirmed) > 0 ? num(l.unconfirmed) : ''}</td>
+                            <td className="text-right tabular-nums">{num(l.received)}</td>
+                            <td className="text-right"><input aria-label={`Arrived for line ${l.line_no}`} inputMode="decimal" className="w-[70px] rounded-[8px] border border-[#E2E5E9] px-2 py-1 text-right font-mono" value={arrived[l.line_no] ?? ''} onChange={(e) => setArrived((x) => ({ ...x, [l.line_no]: e.target.value }))} /></td>
+                            <td className="text-right"><input aria-label={`Damaged for line ${l.line_no}`} inputMode="decimal" className="w-[70px] rounded-[8px] border border-[#E2E5E9] px-2 py-1 text-right font-mono" value={damaged[l.line_no] ?? ''} onChange={(e) => setDamaged((x) => ({ ...x, [l.line_no]: e.target.value }))} /></td>
+                            <td className="text-right tabular-nums">{a > 0 ? `${num(String(a - d))} ${l.order_uom} = ${num(String((a - d) * Number(l.units_per_order_uom)))} units` : ''}</td>
                           </tr>
                         );
                       })}
@@ -109,7 +109,7 @@ export function ReceiveOrderPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button onClick={() => record.mutate()} disabled={!any} loading={record.isPending}>Record delivery</Button>
-                  <span className="text-[12px] text-[#5C7A8A]">Damaged goods are not added to stock; they become an issue to settle with the supplier.</span>
+                  <span className="text-[12px] text-[#66707A]">Damaged goods are not added to stock; they become an issue to settle with the supplier.</span>
                 </div>
                 <div className="mt-2"><ErrorBox error={record.error} /></div>
               </Panel>
@@ -117,26 +117,26 @@ export function ReceiveOrderPage() {
               {pr.issues.length > 0 && (
                 <Panel title="Damage to settle with the supplier">
                   <ul className="flex flex-col gap-2">{pr.issues.map((i) => <IssueRow key={i.id} issue={i} uom={pr.lines.find((l) => l.line_no === i.line_no)?.order_uom ?? ''} onChange={refresh} />)}</ul>
-                  <p className="mt-2 text-[11px] text-[#5C7A8A]">A replacement is counted as on its way only after the supplier confirms it.</p>
+                  <p className="mt-2 text-[11px] text-[#66707A]">A replacement is counted as on its way only after the supplier confirms it.</p>
                 </Panel>
               )}
 
               <Panel title="Deliveries recorded">
-                {pr.receipts.length === 0 && <div className="text-[13px] text-[#5C7A8A]">None yet.</div>}
+                {pr.receipts.length === 0 && <div className="text-[13px] text-[#66707A]">None yet.</div>}
                 <ul className="flex flex-col gap-2 text-[13px]">
                   {pr.receipts.map((r) => (
-                    <li key={r.id} className="rounded-[10px] border border-[#F1E4DA] px-3 py-2">
-                      <div className="text-[12px] text-[#5C7A8A]">{when(r.received_at)} · key {r.receipt_key.slice(0, 8)}…</div>
+                    <li key={r.id} className="rounded-[6px] border border-[#EDEFF2] px-3 py-2">
+                      <div className="text-[12px] text-[#66707A]">{when(r.received_at)} · key {r.receipt_key.slice(0, 8)}…</div>
                       {r.lines.map((rl) => (
                         <div key={rl.id} className="flex flex-wrap items-center gap-2">
                           line {rl.line_no}: arrived {num(rl.arrived)}, damaged {num(rl.damaged)}, +{num(rl.sellable_units)} sellable units
-                          {rl.pos_status === 'ledger_posted' && <span className="text-[12px] text-[#065F46]">added to Tabula stock</span>}
+                          {rl.pos_status === 'ledger_posted' && <span className="text-[12px] text-[#1F7A4D]">added to Tabula stock</span>}
                           {rl.pos_status === 'pending_pos' && <>
-                            <span className="text-[12px] font-medium text-[#991B1B]">not in the POS yet — enter it there (Square is read-only for Tabula)</span>
+                            <span className="text-[12px] font-medium text-[#B42318]">not in the POS yet — enter it there (Square is read-only for Tabula)</span>
                             <Button variant="secondary" onClick={() => posEntered.mutate(rl.id)} loading={posEntered.isPending && posEntered.variables === rl.id}>I entered it in the POS</Button>
                           </>}
-                          {rl.pos_status === 'pos_reported' && <span className="text-[12px] text-[#8A5A00]">entered in the POS — reconcile it below</span>}
-                          {rl.pos_status === 'pos_reconciled' && <span className="text-[12px] text-[#065F46]">reconciled with the POS</span>}
+                          {rl.pos_status === 'pos_reported' && <span className="text-[12px] text-[#A15C07]">entered in the POS — reconcile it below</span>}
+                          {rl.pos_status === 'pos_reconciled' && <span className="text-[12px] text-[#1F7A4D]">reconciled with the POS</span>}
                           {(rl.pos_status === 'pending_pos' || rl.pos_status === 'pos_reported') && <PosReconcile lineId={rl.id} onDone={refresh} />}
                         </div>
                       ))}
@@ -163,11 +163,11 @@ function IssueRow({ issue, uom, onChange }: { issue: NonNullable<PoDetail['progr
     <li className="flex flex-wrap items-center gap-2 text-[13px]">
       line {issue.line_no}: {num(issue.qty)} {uom} {issue.kind} <StatusChip status={issue.status} />
       {issue.status === 'open' ? <>
-        <input aria-label="Replacement ETA" type="date" className="rounded-[8px] border border-[#E8D4C6] px-2 py-1" value={eta} onChange={(e) => setEta(e.target.value)} />
+        <input aria-label="Replacement ETA" type="date" className="rounded-[8px] border border-[#E2E5E9] px-2 py-1" value={eta} onChange={(e) => setEta(e.target.value)} />
         <Button variant="secondary" onClick={() => resolve.mutate('replacement_confirmed')} loading={resolve.isPending}>Supplier confirmed a replacement</Button>
         <Button variant="secondary" onClick={() => resolve.mutate('credit_confirmed')} loading={resolve.isPending}>Supplier confirmed a credit</Button>
         <Button variant="secondary" onClick={() => resolve.mutate('written_off')} loading={resolve.isPending}>Write off</Button>
-      </> : issue.resolution_eta && <span className="text-[12px] text-[#5C7A8A]">replacement ETA {issue.resolution_eta}</span>}
+      </> : issue.resolution_eta && <span className="text-[12px] text-[#66707A]">replacement ETA {issue.resolution_eta}</span>}
       <ErrorBox error={resolve.error} />
     </li>
   );
@@ -188,34 +188,34 @@ function PosReconcile({ lineId, onDone }: { lineId: string; onDone: () => void }
     mutationFn: (outcome: string) => api(`/receipt-lines/${lineId}/pos-reconcile`, { body: { outcome, note: note || null } }),
     onSuccess: () => { setOpen(false); onDone(); },
   });
-  if (!open) return <button className="text-[12px] text-[#E8654A] underline" onClick={() => setOpen(true)}>Compare with the POS</button>;
+  if (!open) return <button className="text-[12px] text-[#2457C5] underline" onClick={() => setOpen(true)}>Compare with the POS</button>;
   const e = ev.data;
   return (
-    <div className="mt-2 w-full rounded-[10px] border border-[#F1E4DA] bg-[#FFFAF6] p-3 text-[12px]">
+    <div className="mt-2 w-full rounded-[6px] border border-[#EDEFF2] bg-[#F8F9FA] p-3 text-[12px]">
       {ev.isLoading && <Loading />}
       <ErrorBox error={ev.error} />
       {e && <>
         <div className="mb-1 font-semibold">{ASSESSMENT[e.assessment] ?? e.assessment}</div>
-        <div className="text-[#5C7A8A]">{e.explanation}</div>
+        <div className="text-[#66707A]">{e.explanation}</div>
         {e.expected_after != null && (
           <table className="mt-2 [&_td]:pr-4"><tbody>
-            <tr><td>POS reading before</td><td className="font-mono">{num(e.reading_before?.qty)}</td><td className="text-[#5C7A8A]">{when(e.reading_before?.at)}</td></tr>
-            <tr><td>+ received in between (this and other deliveries)</td><td className="font-mono">{num(e.units_received_in_window)}</td></tr>
-            <tr><td>− sold in between</td><td className="font-mono">{num(e.units_sold)}</td></tr>
-            <tr><td>+ refunds put back on the shelf</td><td className="font-mono">{num(e.refunds_restocked)}</td></tr>
+            <tr><td>POS reading before</td><td className="tabular-nums">{num(e.reading_before?.qty)}</td><td className="text-[#66707A]">{when(e.reading_before?.at)}</td></tr>
+            <tr><td>+ received in between (this and other deliveries)</td><td className="tabular-nums">{num(e.units_received_in_window)}</td></tr>
+            <tr><td>− sold in between</td><td className="tabular-nums">{num(e.units_sold)}</td></tr>
+            <tr><td>+ refunds put back on the shelf</td><td className="tabular-nums">{num(e.refunds_restocked)}</td></tr>
             <tr><td>= expected</td><td className="font-mono font-semibold">{num(e.expected_after)}</td></tr>
-            <tr><td>POS reading after</td><td className="font-mono font-semibold">{num(e.reading_after?.qty)}</td><td className="text-[#5C7A8A]">{when(e.reading_after?.at)}</td></tr>
+            <tr><td>POS reading after</td><td className="font-mono font-semibold">{num(e.reading_after?.qty)}</td><td className="text-[#66707A]">{when(e.reading_after?.at)}</td></tr>
             <tr><td>Unexplained</td><td className="font-mono font-semibold">{num(e.unexplained)}</td></tr>
-            <tr><td className="text-[#5C7A8A]">Refunds with unknown restock</td><td className="font-mono">{num(e.refunds_restock_unknown)}</td></tr>
+            <tr><td className="text-[#66707A]">Refunds with unknown restock</td><td className="tabular-nums">{num(e.refunds_restock_unknown)}</td></tr>
           </tbody></table>
         )}
-        <input className="mt-2 w-full rounded-[8px] border border-[#E8D4C6] px-2 py-1" placeholder="What you checked in the POS (required unless the readings agree)" value={note} onChange={(x) => setNote(x.target.value)} />
+        <input className="mt-2 w-full rounded-[8px] border border-[#E2E5E9] px-2 py-1" placeholder="What you checked in the POS (required unless the readings agree)" value={note} onChange={(x) => setNote(x.target.value)} />
         <div className="mt-2 flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => sign.mutate('matches')} loading={sign.isPending}>POS is right</Button>
           <Button variant="secondary" onClick={() => sign.mutate('corrected_in_pos')} loading={sign.isPending}>I corrected it in the POS</Button>
           <Button variant="secondary" onClick={() => sign.mutate('accepted_difference')} loading={sign.isPending}>Accept the difference</Button>
         </div>
-        <p className="mt-1 text-[11px] text-[#5C7A8A]">Owner or manager. The evidence above is stored with your decision.</p>
+        <p className="mt-1 text-[11px] text-[#66707A]">Owner or manager. The evidence above is stored with your decision.</p>
         <ErrorBox error={sign.error} />
       </>}
     </div>

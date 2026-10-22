@@ -357,6 +357,20 @@ Gate: 10상자 중 8 입고·1 손상·잔량 2 시나리오에서 잔량·재�
 - 로그인 실패 메시지 통일(잠금이 계정 존재를 드러내지 않음). 세션 쿠키는 dev 모드 외에는 기본 Secure.
 - 남은 것: 샘플 매장은 여전히 별도 프로세스의 seed(외부에서 접근 불가한 in-process dev 인증)로 만든다. IP별 로그인 제한 없음(5회 실패 잠금만). 품목 상세 차트는 부분 데이터 날도 기록된 판매를 그대로 보여준다.
 
+## [~] 매장주 UI 재설계 (정보 구조·우선순위) — 구현 완료 · 브라우저·API·DB 확인(합성·샘플 데이터) · 실제 매장주 사용성 미검증
+
+- 메뉴: Overview / Inventory / Orders / Insights + Settings. Scan은 Inventory의 주 버튼, Suppliers는 Orders의 탭, 데이터 연결·매장·팀은 Settings. 예전 주소는 새 위치로 이동(redirect).
+- 신규 매장은 `/app/setup` 체크리스트(재고 → 판매 → 공급업체·가격 → 배송 주소)로 시작, 상품이 있으면 Overview로 바로.
+- Overview: 매장명·마지막 갱신 시각·"Review reorder plan" → 요약 3개(재고 부족, 검토할 주문, 입고 예정) → 우선순위 발주 표(현재 재고, 소진일, 추천 수량·케이스, 예상 비용, 공급업체; 저장하지 않는 같은 엔진 계산) → 진행 중 주문과 예상 도착일 → 할 일. 데이터가 없으면 숫자 대신 다음 행동(예: "Add a supplier", "Import sales history").
+- Orders: 검토 필요 / 진행 중 / 완료 탭(공급업체, 금액, 상태, 예상 도착일, 다음 행동). 예상 도착일은 공급업체 날짜가 있으면 그 날짜, 없으면 리드타임 추정으로 표시하고 "estimate / if sent today"라고 밝힌다.
+- 주문 상세: 품목·수량·비용·배송이 먼저. 추천과 다른 수량, 가격·검토 알림은 항상 보임. 계산 근거·보관된 이메일·승인/전송·이력은 접어 둠. 실제 전송 여부: "Test mode: approving keeps this order in Tabula" / "Test order — not sent".
+- Inventory: 표(상품, 판매 가능, 입고 예정, 소진일, 상태) + 상세 패널(바코드, 공급업체별 단가, 판매·예상 재고 차트, 변경 이력, 주문). Scan: 작업 모드 먼저 선택, 저장 시 이전 → 이후 표시.
+- 디자인: 중립 배경, 흰 작업 영역, 짙은 글자, 강조색 하나(파랑), 상태 색은 품절·소진 임박·문제에만. 테스트 모드는 사이드바 한 곳 + 결정이 걸린 주문 화면에서만, 샘플 매장은 얇은 상단 줄 한 곳.
+- API 추가: `/v1/stock/overview` 행의 `reorder`, `/v1/items/{id}/history`의 `suppliers`, `/v1/purchase-orders` 목록의 `expected_at`/`expected_source`. 테스트 추가.
+- 확인: `scripts/ui_walkthrough_owner.py`(가입 → 온보딩 → Overview → 패널 → 스캔 → 공급업체 → 발주 계획 → 초안 → 승인, 26장), `ui_walkthrough.py`, `ui_walkthrough_store.py` 모두 새 화면으로 통과.
+- 한계: 실제 매장주 사용성 테스트 없음. 접근성 점검(스크린리더·키보드 전체 경로) 미실시. 차트는 단순 SVG.
+- **독립 리뷰 미완료**: 리뷰 에이전트가 네트워크 오류 후 사용량 한도로 중단(2026-10-22). 리뷰되지 않은 범위: 새 화면 전체(`app/Overview.tsx`, `app/Orders.tsx`, `ops/OrdersPage.tsx`, `app/Inventory.tsx`, `app/Scan.tsx`, `app/Setup.tsx`, `ops/kit.tsx`)와 API 추가 필드(`stock_view.overview` reorder, `item_history` suppliers, PO 목록 expected_at). 한도 해제 후 같은 리뷰를 이어서 실행할 것.
+
 ## CP9 — Invoice 대조 `[BILL-01]`
 
 - [ ] 9.1 전용 수신 주소 + 업로드로 invoice 수입 (Gmail 전체 inbox 접근은 하지 않음)
@@ -374,7 +388,7 @@ Gate: 같은 invoice가 이메일과 업로드로 두 번 들어와도 1건. 실
 ## CP10 — Owner 화면 `[UI-01]` (CP5부터 각 CP와 함께)
 
 - [~] 10.1 TanStack Query 도입, `data.ts`의 output JSON import 제거 → live API, demo fixtures는 별도 모드 — `/app/*` 매장주 화면 전부 live API(Owner 앱), legacy 화면은 `/legacy/*`에 그대로
-- [~] 10.2 메뉴: Home / Inventory / Scan / Insights / Orders / Suppliers / Data / Settings (Bills는 CP9 이후)
+- [~] 10.2 메뉴: Overview / Inventory / Orders / Insights + Settings (Scan은 Inventory, Suppliers는 Orders 안; Bills는 CP9 이후)
 - [ ] 10.3 `ActionChip`(이벤트 없는 span) → loading/disabled/success/error 버튼, 발주·지급은 낙관적 성공 표시 금지
 - [ ] 10.4 Today: 오늘 결정할 주문, 미확인 supplier, 늦은 입고, invoice 차이, stale/연결 끊김/budget 초과
 - [ ] 10.5 추천 상세: 근거 수치, 총 승인 금액, 수정 사유 선택

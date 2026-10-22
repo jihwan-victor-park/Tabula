@@ -100,7 +100,7 @@ def get_callback(request: Request, state: str, code: str | None = None, error: s
     if "text/html" in request.headers.get("accept", ""):
         # A person's browser coming back from Square: land on the Connections screen.
         ui = os.getenv("TABULA_UI_URL", "http://127.0.0.1:5173").rstrip("/")
-        return RedirectResponse(f"{ui}/app/data/square?connected={account.id}", status_code=303)
+        return RedirectResponse(f"{ui}/app/settings/data/square?connected={account.id}", status_code=303)
     return _account_view(session, account)
 
 
