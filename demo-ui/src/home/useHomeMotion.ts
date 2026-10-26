@@ -53,6 +53,7 @@ export function useHomeMotion(rootRef: RefObject<HTMLElement | null>) {
     const updateScrub = () => {
       const height = window.innerHeight || 1;
       const still = reduce.matches;
+      const room = Math.max(0, document.documentElement.scrollHeight - height - window.scrollY);
       scrubNodes.forEach((node) => {
         if (still) {
           node.style.setProperty('--scrub', '1');
@@ -61,7 +62,11 @@ export function useHomeMotion(rootRef: RefObject<HTMLElement | null>) {
         const rect = node.getBoundingClientRect();
         const start = height * 0.92;
         const end = height * 0.38;
-        const progress = (start - rect.top) / (start - end);
+        // A block at the bottom of the page cannot travel up to the usual
+        // finish line. Finish the highlight when the page can scroll no further.
+        const targetEnd = Math.max(end, rect.top - room);
+        const span = start - targetEnd;
+        const progress = span <= 1 ? 1 : (start - rect.top) / span;
         const scrub = Math.min(1, Math.max(0, progress));
         node.style.setProperty('--scrub', scrub.toFixed(3));
       });

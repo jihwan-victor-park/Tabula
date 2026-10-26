@@ -23,41 +23,41 @@ function ScanQRModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="relative w-[340px] rounded-[20px] border border-[#E8D4C6] bg-white p-6 shadow-xl"
+        className="relative w-[340px] rounded-[20px] border border-[var(--app-line)] bg-[var(--app-surface)] p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full text-[#5C7A8A] hover:bg-[#FDF5EF]"
+          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full text-[var(--app-muted)] hover:bg-[var(--app-surface-muted)]"
         >
           <SymbolIcon icon="close" className="text-[18px]" />
         </button>
 
         <div className="flex items-center gap-2 mb-4">
-          <SymbolIcon icon="qr_code_scanner" className="text-[22px] text-[#E8654A]" />
-          <h2 className="text-[16px] font-semibold text-[#1B3A4B]">Scan with your phone</h2>
+          <SymbolIcon icon="qr_code_scanner" className="text-[22px] text-[var(--app-accent)]" />
+          <h2 className="text-[16px] font-semibold text-[var(--app-ink)]">Scan with your phone</h2>
         </div>
 
         {/* QR Code */}
         <div className="flex justify-center mb-4">
-          <div className="rounded-[12px] border border-[#E8D4C6] bg-[#FDF5EF] p-2">
+          <div className="rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface-muted)] p-2">
             <img src={qrSrc} alt="Scanner QR code" className="h-[220px] w-[220px] rounded-[8px]" />
           </div>
         </div>
 
-        <p className="mb-3 text-center text-[13px] text-[#5C7A8A]">
+        <p className="mb-3 text-center text-[13px] text-[var(--app-muted)]">
           Point your phone camera at this code to open the barcode scanner.
         </p>
 
         {/* Editable URL */}
         <div>
-          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[#9AAFBC]">
+          <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--app-quiet)]">
             Scanner URL (paste ngrok URL for iPhone)
           </label>
           <input
-            className="w-full rounded-[8px] border border-[#E8D4C6] bg-[#FDF5EF] px-3 py-2 font-mono text-[12px] text-[#1B3A4B] outline-none focus:border-[#E8654A]"
+            className="w-full rounded-[8px] border border-[var(--app-line)] bg-[var(--app-surface-muted)] px-3 py-2 font-mono text-[12px] text-[var(--app-ink)] outline-none focus:border-[var(--app-accent)]"
             value={url}
             onChange={(e) => save(e.target.value)}
             spellCheck={false}
@@ -97,7 +97,7 @@ function StockBar({ qty, reorder }: { qty: number; reorder: number }) {
   const max = Math.max(reorder * 3, qty, 1);
   const pct = Math.min(100, (qty / max) * 100);
   const color =
-    qty === 0 ? '#D14D4D' : qty <= reorder ? '#D4870E' : '#2D8A6E';
+    qty === 0 ? 'var(--app-danger)' : qty <= reorder ? 'var(--app-warning)' : 'var(--app-success)';
   return (
     <div className="flex items-center gap-2">
       <span
@@ -106,7 +106,7 @@ function StockBar({ qty, reorder }: { qty: number; reorder: number }) {
       >
         {qty}
       </span>
-      <div className="h-[5px] w-[72px] overflow-hidden rounded-full bg-[#F5E0CF]">
+      <div className="h-[5px] w-[72px] overflow-hidden rounded-full bg-[var(--app-canvas)]">
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${pct}%`, background: color }}
@@ -119,8 +119,8 @@ function StockBar({ qty, reorder }: { qty: number; reorder: number }) {
 function LiveDot() {
   return (
     <span className="relative inline-flex h-2 w-2">
-      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2D8A6E] opacity-60" />
-      <span className="relative inline-flex h-2 w-2 rounded-full bg-[#2D8A6E]" />
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--app-success)] opacity-60" />
+      <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--app-success)]" />
     </span>
   );
 }
@@ -209,16 +209,16 @@ export function InventoryPage() {
       <div className="flex h-full flex-col overflow-hidden">
 
         {/* ── Header ── */}
-        <header className="flex min-h-[72px] shrink-0 flex-col gap-4 border-b border-[#E8D4C6] bg-white px-8 py-4 xl:flex-row xl:items-center xl:justify-between xl:py-0">
+        <header className="flex min-h-[72px] shrink-0 flex-col gap-4 border-b border-[var(--app-line)] bg-[var(--app-surface)] px-8 py-4 xl:flex-row xl:items-center xl:justify-between xl:py-0">
           <div className="flex items-center gap-3">
-            <SymbolIcon icon="inventory_2" className="text-[28px] text-[#E8654A]" />
+            <SymbolIcon icon="inventory_2" className="text-[28px] text-[var(--app-accent)]" />
             <div>
-              <h1 className="text-[20px] font-semibold text-[#1B3A4B]">Inventory</h1>
-              <div className="flex items-center gap-1.5 text-[12px] text-[#5C7A8A]">
+              <h1 className="text-[20px] font-semibold text-[var(--app-ink)]">Inventory</h1>
+              <div className="flex items-center gap-1.5 text-[12px] text-[var(--app-muted)]">
                 <LiveDot />
                 <span>MongoDB Atlas · live</span>
                 {lastRefresh && (
-                  <span className="text-[#9AAFBC]">
+                  <span className="text-[var(--app-quiet)]">
                     · updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </span>
                 )}
@@ -228,10 +228,10 @@ export function InventoryPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             {/* Search */}
-            <div className="flex h-10 w-[240px] items-center gap-2 rounded-[8px] border border-[#E8D4C6] bg-white px-3 text-[#9AAFBC]">
+            <div className="flex h-10 w-[240px] items-center gap-2 rounded-[8px] border border-[var(--app-line)] bg-[var(--app-surface)] px-3 text-[var(--app-quiet)]">
               <SymbolIcon icon="search" className="text-base" />
               <input
-                className="flex-1 bg-transparent text-[14px] text-[#1B3A4B] placeholder-[#9AAFBC] outline-none"
+                className="flex-1 bg-transparent text-[14px] text-[var(--app-ink)] placeholder-[var(--app-quiet)] outline-none"
                 placeholder="Search items…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -242,7 +242,7 @@ export function InventoryPage() {
             <button
               type="button"
               onClick={fetchInventory}
-              className="inline-flex items-center gap-1.5 rounded-[999px] border border-[#E8D4C6] bg-white px-4 py-2 text-[13px] font-medium text-[#5C7A8A] transition-colors hover:bg-[#FDF5EF]"
+              className="inline-flex items-center gap-1.5 rounded-[999px] border border-[var(--app-line)] bg-[var(--app-surface)] px-4 py-2 text-[13px] font-medium text-[var(--app-muted)] transition-colors hover:bg-[var(--app-surface-muted)]"
             >
               <SymbolIcon icon="refresh" className="text-[18px]" />
               Refresh
@@ -252,7 +252,7 @@ export function InventoryPage() {
             <button
               type="button"
               onClick={() => setShowQR(true)}
-              className="inline-flex items-center gap-1.5 rounded-[999px] border border-transparent bg-[#1B3A4B] px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#2A5060]"
+              className="inline-flex items-center gap-1.5 rounded-[999px] border border-transparent bg-[var(--app-ink)] px-4 py-2 text-[13px] font-medium text-[var(--app-inverse-ink)] transition-colors hover:bg-[var(--app-inverse-hover)]"
             >
               <SymbolIcon icon="qr_code_scanner" className="text-[18px]" />
               Scan Items
@@ -263,33 +263,33 @@ export function InventoryPage() {
         {/* ── Stat cards ── */}
         <div className="shrink-0 px-8 py-4">
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-            <div className="rounded-[12px] border border-[#E8D4C6] bg-white px-5 py-4 shadow-sm">
-              <div className="text-[12px] font-medium text-[#5C7A8A]">Total items</div>
-              <div className="mt-1 font-mono text-[22px] font-bold text-[#1B3A4B]">
+            <div className="rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] px-5 py-4 shadow-sm">
+              <div className="text-[12px] font-medium text-[var(--app-muted)]">Total items</div>
+              <div className="mt-1 font-mono text-[22px] font-bold text-[var(--app-ink)]">
                 {loading ? '—' : totalItems}
               </div>
             </div>
-            <div className="rounded-[12px] border border-[#E8D4C6] bg-white px-5 py-4 shadow-sm">
-              <div className="text-[12px] font-medium text-[#5C7A8A]">In stock</div>
-              <div className="mt-1 font-mono text-[22px] font-bold text-[#2D8A6E]">
+            <div className="rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] px-5 py-4 shadow-sm">
+              <div className="text-[12px] font-medium text-[var(--app-muted)]">In stock</div>
+              <div className="mt-1 font-mono text-[22px] font-bold text-[var(--app-success)]">
                 {loading ? '—' : inStock}
               </div>
             </div>
-            <div className="rounded-[12px] border border-[#E8D4C6] bg-white px-5 py-4 shadow-sm">
-              <div className="text-[12px] font-medium text-[#5C7A8A]">Low stock</div>
-              <div className="mt-1 font-mono text-[22px] font-bold text-[#D4870E]">
+            <div className="rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] px-5 py-4 shadow-sm">
+              <div className="text-[12px] font-medium text-[var(--app-muted)]">Low stock</div>
+              <div className="mt-1 font-mono text-[22px] font-bold text-[var(--app-warning)]">
                 {loading ? '—' : lowStock}
               </div>
             </div>
-            <div className="rounded-[12px] border border-[#E8D4C6] bg-white px-5 py-4 shadow-sm">
-              <div className="text-[12px] font-medium text-[#5C7A8A]">Out of stock</div>
-              <div className="mt-1 font-mono text-[22px] font-bold text-[#D14D4D]">
+            <div className="rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] px-5 py-4 shadow-sm">
+              <div className="text-[12px] font-medium text-[var(--app-muted)]">Out of stock</div>
+              <div className="mt-1 font-mono text-[22px] font-bold text-[var(--app-danger)]">
                 {loading ? '—' : outOfStock}
               </div>
             </div>
-            <div className="rounded-[12px] border border-[#E8D4C6] bg-white px-5 py-4 shadow-sm">
-              <div className="text-[12px] font-medium text-[#5C7A8A]">Inventory value</div>
-              <div className="mt-1 font-mono text-[22px] font-bold text-[#1B3A4B]">
+            <div className="rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] px-5 py-4 shadow-sm">
+              <div className="text-[12px] font-medium text-[var(--app-muted)]">Inventory value</div>
+              <div className="mt-1 font-mono text-[22px] font-bold text-[var(--app-ink)]">
                 {loading ? '—' : `$${totalValue.toFixed(0)}`}
               </div>
             </div>
@@ -298,10 +298,10 @@ export function InventoryPage() {
 
         {/* ── Table ── */}
         <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-6">
-          <div className="overflow-hidden rounded-[12px] border border-[#E8D4C6] bg-white shadow-sm">
+          <div className="overflow-hidden rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] shadow-sm">
 
             {/* Column headers */}
-            <div className="grid grid-cols-[1fr_140px_160px_130px_100px_80px] items-center border-b border-[#E8D4C6] bg-[#FDF5EF] px-5 text-[12px] font-semibold uppercase tracking-wide text-[#5C7A8A]">
+            <div className="grid grid-cols-[1fr_140px_160px_130px_100px_80px] items-center border-b border-[var(--app-line)] bg-[var(--app-surface-muted)] px-5 text-[12px] font-semibold uppercase tracking-wide text-[var(--app-muted)]">
               <div className="py-3">Product</div>
               <div className="py-3">Category</div>
               <div className="py-3">Qty / Level</div>
@@ -312,8 +312,8 @@ export function InventoryPage() {
 
             {/* Loading state */}
             {loading && (
-              <div className="flex items-center justify-center gap-2 py-16 text-[14px] text-[#5C7A8A]">
-                <svg className="h-4 w-4 animate-spin text-[#E8654A]" viewBox="0 0 24 24" fill="none">
+              <div className="flex items-center justify-center gap-2 py-16 text-[14px] text-[var(--app-muted)]">
+                <svg className="h-4 w-4 animate-spin text-[var(--app-accent)]" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
@@ -327,18 +327,18 @@ export function InventoryPage() {
               return (
                 <div
                   key={item.id}
-                  className={`grid grid-cols-[1fr_140px_160px_130px_100px_80px] items-center border-b border-[#E8D4C6] px-5 last:border-b-0 transition-colors duration-700 ${
-                    isFlashing ? 'bg-[#2D8A6E0F]' : 'bg-white hover:bg-[#FDFAF8]'
+                  className={`grid grid-cols-[1fr_140px_160px_130px_100px_80px] items-center border-b border-[var(--app-line)] px-5 last:border-b-0 transition-colors duration-700 ${
+                    isFlashing ? 'bg-[var(--app-success-soft)]' : 'bg-[var(--app-surface)] hover:bg-[var(--app-surface-muted)]'
                   }`}
                 >
                   {/* Product */}
                   <div className="py-3">
-                    <div className="text-[14px] font-medium text-[#1B3A4B]">{item.name}</div>
+                    <div className="text-[14px] font-medium text-[var(--app-ink)]">{item.name}</div>
                     <div className="mt-0.5 flex items-center gap-2">
                       {item.brand && (
-                        <span className="text-[12px] text-[#5C7A8A]">{item.brand}</span>
+                        <span className="text-[12px] text-[var(--app-muted)]">{item.brand}</span>
                       )}
-                      <span className="font-mono text-[11px] text-[#9AAFBC]">{item.id}</span>
+                      <span className="font-mono text-[11px] text-[var(--app-quiet)]">{item.id}</span>
                     </div>
                   </div>
 
@@ -347,7 +347,7 @@ export function InventoryPage() {
                     {item.category ? (
                       <Badge label={item.category} tone="blue" mono={false} />
                     ) : (
-                      <span className="text-[13px] text-[#9AAFBC]">—</span>
+                      <span className="text-[13px] text-[var(--app-quiet)]">—</span>
                     )}
                   </div>
 
@@ -357,12 +357,12 @@ export function InventoryPage() {
                   </div>
 
                   {/* Reorder point */}
-                  <div className="py-3 font-mono text-[13px] text-[#5C7A8A]">
+                  <div className="py-3 font-mono text-[13px] text-[var(--app-muted)]">
                     {item.reorder_point} units
                   </div>
 
                   {/* Price */}
-                  <div className="py-3 font-mono text-[13px] text-[#1B3A4B]">
+                  <div className="py-3 font-mono text-[13px] text-[var(--app-ink)]">
                     {item.sell_price != null ? `$${item.sell_price.toFixed(2)}` : '—'}
                   </div>
 
@@ -381,18 +381,18 @@ export function InventoryPage() {
 
             {/* Empty state */}
             {!loading && filtered.length === 0 && (
-              <div className="py-16 text-center text-[14px] text-[#5C7A8A]">
+              <div className="py-16 text-center text-[14px] text-[var(--app-muted)]">
                 {query ? `No items match "${query}"` : 'No inventory items found.'}
               </div>
             )}
 
             {/* Footer */}
             {!loading && (
-              <div className="flex items-center justify-between border-t border-[#E8D4C6] bg-[#FDF5EF] px-5 py-3">
-                <span className="text-[13px] text-[#5C7A8A]">
+              <div className="flex items-center justify-between border-t border-[var(--app-line)] bg-[var(--app-surface-muted)] px-5 py-3">
+                <span className="text-[13px] text-[var(--app-muted)]">
                   Showing {filtered.length} of {totalItems} items · auto-refreshes every 5 s
                 </span>
-                <div className="flex items-center gap-1.5 text-[12px] text-[#2D8A6E]">
+                <div className="flex items-center gap-1.5 text-[12px] text-[var(--app-success)]">
                   <LiveDot />
                   <span>MongoDB Atlas</span>
                 </div>

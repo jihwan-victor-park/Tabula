@@ -320,7 +320,6 @@ export const dashboardSidebar: {
       items: [
         { label: 'Price Scout', icon: 'price_check', href: '/price-scout' },
         { label: 'Trends', icon: 'trending_up', href: '/trends' },
-        { label: 'Settings', icon: 'settings' },
       ],
     },
   ],

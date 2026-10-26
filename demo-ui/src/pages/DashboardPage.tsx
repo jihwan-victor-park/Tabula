@@ -68,40 +68,40 @@ function SalesChart() {
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: 180 }}>
       <defs>
         <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#2D8A6E" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#2D8A6E" stopOpacity="0.02" />
+          <stop offset="0%" stopColor="var(--app-success)" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="var(--app-success)" stopOpacity="0.02" />
         </linearGradient>
       </defs>
 
       {gridLines.map((g) => (
         <g key={g.val}>
-          <line x1={padX} y1={g.y} x2={W - padX} y2={g.y} stroke="#E8D4C6" strokeWidth="0.5" />
-          <text x={padX - 6} y={g.y + 3.5} textAnchor="end" fill="#9AAFBC" fontSize="8" fontFamily="'JetBrains Mono', monospace">
+          <line x1={padX} y1={g.y} x2={W - padX} y2={g.y} stroke="var(--app-line)" strokeWidth="0.5" />
+          <text x={padX - 6} y={g.y + 3.5} textAnchor="end" fill="var(--app-quiet)" fontSize="8" fontFamily="'JetBrains Mono', monospace">
             {g.val}
           </text>
         </g>
       ))}
 
       <path d={areaPath} fill="url(#areaGrad)" />
-      <path d={linePath} fill="none" stroke="#2D8A6E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={linePath} fill="none" stroke="var(--app-success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
       {points.map((p, i) => (
         <g key={i}>
-          <circle cx={p.x} cy={p.y} r="3.5" fill="#FFFFFF" stroke="#2D8A6E" strokeWidth="1.5" />
+          <circle cx={p.x} cy={p.y} r="3.5" fill="var(--app-surface)" stroke="var(--app-success)" strokeWidth="1.5" />
           {i % 3 === 0 || i === points.length - 1 ? (
-            <text x={p.x} y={H - 4} textAnchor="middle" fill="#9AAFBC" fontSize="7" fontFamily="'JetBrains Mono', monospace">
+            <text x={p.x} y={H - 4} textAnchor="middle" fill="var(--app-quiet)" fontSize="7" fontFamily="'JetBrains Mono', monospace">
               {p.day.slice(4)}
             </text>
           ) : null}
         </g>
       ))}
 
-      <rect x={points[points.length - 1]!.x - 14} y={points[points.length - 1]!.y - 18} width="28" height="14" rx="4" fill="#2D8A6E" />
+      <rect x={points[points.length - 1]!.x - 14} y={points[points.length - 1]!.y - 18} width="28" height="14" rx="4" fill="var(--app-success)" />
       <text
         x={points[points.length - 1]!.x}
         y={points[points.length - 1]!.y - 9}
         textAnchor="middle"
-        fill="#FFFFFF"
+        fill="var(--app-surface)"
         fontSize="8"
         fontWeight="700"
         fontFamily="'JetBrains Mono', monospace"
@@ -123,9 +123,9 @@ type DebateMessage = {
 };
 
 const STORE_COLORS: Record<string, { color: string; bg: string }> = {
-  store_a: { color: 'text-[#E8654A]', bg: 'bg-[#E8654A]' },
-  store_b: { color: 'text-[#2D8A6E]', bg: 'bg-[#2D8A6E]' },
-  store_c: { color: 'text-[#D4870E]', bg: 'bg-[#D4870E]' },
+  store_a: { color: 'text-[var(--app-accent)]', bg: 'bg-[var(--app-accent)]' },
+  store_b: { color: 'text-[var(--app-success)]', bg: 'bg-[var(--app-success)]' },
+  store_c: { color: 'text-[var(--app-warning)]', bg: 'bg-[var(--app-warning)]' },
   store_d: { color: 'text-[#7B68B0]', bg: 'bg-[#7B68B0]' },
   store_e: { color: 'text-[#3B82F6]', bg: 'bg-[#3B82F6]' },
 };
@@ -199,14 +199,14 @@ function AgentChat() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Round indicator */}
-      <div className="flex items-center gap-2 border-b border-[#E8D4C6] px-4 py-2">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-[#9AAFBC]">Debate Round {currentRound}</span>
-        <span className="font-mono text-[10px] text-[#5C7A8A]">· Powered by Nous Hermes</span>
+      <div className="flex items-center gap-2 border-b border-[var(--app-line)] px-4 py-2">
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--app-quiet)]">Debate Round {currentRound}</span>
+        <span className="font-mono text-[10px] text-[var(--app-muted)]">· Powered by Nous Hermes</span>
       </div>
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 pb-4 pt-2">
         {messages.map((msg, i) => {
-          const colors = STORE_COLORS[msg.storeId] || { color: 'text-[#5C7A8A]', bg: 'bg-[#5C7A8A]' };
+          const colors = STORE_COLORS[msg.storeId] || { color: 'text-[var(--app-muted)]', bg: 'bg-[var(--app-muted)]' };
           const isLeft = i % 2 === 0;
 
           return (
@@ -222,13 +222,13 @@ function AgentChat() {
                 </div>
                 <div
                   className={[
-                    'rounded-[14px] bg-[#FDF5EF] px-3.5 py-2.5 text-left text-[12.5px] leading-[1.5] text-[#1B3A4B]',
+                    'rounded-[14px] bg-[var(--app-surface-muted)] px-3.5 py-2.5 text-left text-[12.5px] leading-[1.5] text-[var(--app-ink)]',
                     isLeft ? 'rounded-bl-[4px]' : 'rounded-br-[4px]',
                   ].join(' ')}
                 >
                   {msg.text}
                 </div>
-                <div className={`mt-1 font-mono text-[9px] text-[#9AAFBC] ${isLeft ? '' : 'text-right'}`}>{msg.time}</div>
+                <div className={`mt-1 font-mono text-[9px] text-[var(--app-quiet)] ${isLeft ? '' : 'text-right'}`}>{msg.time}</div>
               </div>
               {!isLeft && (
                 <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white ${colors.bg}`}>
@@ -239,9 +239,9 @@ function AgentChat() {
           );
         })}
       </div>
-      <div className="flex items-center gap-2 border-t border-[#E8D4C6] px-4 py-3">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#2D8A6E]" />
-        <span className="text-[11px] text-[#9AAFBC]">
+      <div className="flex items-center gap-2 border-t border-[var(--app-line)] px-4 py-3">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--app-success)]" />
+        <span className="text-[11px] text-[var(--app-quiet)]">
           {debateData.length} debate messages · {new Set(debateData.map(m => m.store_name)).size} agents · Nous Hermes 4
         </span>
       </div>
@@ -266,32 +266,32 @@ export function DashboardPage() {
       <div className="flex h-full flex-col gap-6 px-8 py-7">
         <header className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex-1">
-            <h1 className="text-[42px] font-bold leading-[1.15] text-[#1B3A4B]" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Hi Sarah, Welcome to Tabula</h1>
+            <h1 className="text-[42px] font-semibold leading-[1.05] tracking-[-0.04em] text-[var(--app-ink)]">Hi Sarah, Welcome to Tabula</h1>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1B3A4B] font-mono text-[13px] font-semibold text-white">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--app-ink)] font-mono text-[13px] font-semibold text-[var(--app-inverse-ink)]">
               {createInitials(featuredStore.store_name)}
             </div>
           </div>
         </header>
 
         {/* ── Featured recommendation — compact purchase card ── */}
-        <div className="flex w-full items-center gap-3 rounded-[12px] border border-[#E8D4C6] bg-white px-4 py-3 shadow-sm">
+        <div className="flex w-full items-center gap-3 rounded-[12px] border border-[var(--app-line)] bg-[var(--app-surface)] px-4 py-3 shadow-sm">
           <img
             src="/doll.png"
             alt="Craft Kits"
-            className="h-12 w-12 shrink-0 rounded-[10px] border border-[#E8D4C6] object-cover"
+            className="h-12 w-12 shrink-0 rounded-[10px] border border-[var(--app-line)] object-cover"
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-[14px] font-semibold text-[#1B3A4B]">{formatCategory(featuredRecommendation.category)}</span>
+              <span className="text-[14px] font-semibold text-[var(--app-ink)]">{formatCategory(featuredRecommendation.category)}</span>
               <Badge label={`${Math.round(featuredRecommendation.confidence * 100)}%`} tone="green" />
             </div>
-            <div className="mt-0.5 text-[12px] text-[#5C7A8A]">
+            <div className="mt-0.5 text-[12px] text-[var(--app-muted)]">
               {featuredRecommendation.reasoning}
             </div>
           </div>
-          <button className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] bg-[#E8654A] px-4 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[#D4573E]">
+          <button className="inline-flex shrink-0 items-center gap-1.5 rounded-[8px] bg-[var(--app-accent)] px-4 py-2 text-[12px] font-semibold text-[var(--app-accent-ink)] transition-colors hover:bg-[color-mix(in_srgb,var(--app-accent)_82%,var(--app-ink))]">
             <SymbolIcon icon="shopping_cart" family="rounded" className="text-[16px]" />
             Purchase
           </button>
@@ -304,18 +304,18 @@ export function DashboardPage() {
           {/* ── Inventory Health — Dolls trend chart ── */}
           <CardPanel className="flex min-h-[420px] flex-col">
             <div className="flex items-center justify-between px-6 py-5">
-              <h2 className="text-[16px] font-semibold leading-[1.4] text-[#1B3A4B]">Inventory Health</h2>
+              <h2 className="text-[16px] font-semibold leading-[1.4] text-[var(--app-ink)]">Inventory Health</h2>
               <Badge label="14-day view" tone="blue" />
             </div>
 
             <div className="mx-6 mb-3 flex items-end justify-between">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#D4870E]">Trending Item</div>
-                <div className="mt-0.5 text-[18px] font-semibold text-[#1B3A4B]">Dolls — Daily Sales</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--app-warning)]">Trending Item</div>
+                <div className="mt-0.5 text-[18px] font-semibold text-[var(--app-ink)]">Dolls — Daily Sales</div>
               </div>
               <div className="text-right">
-                <span className="font-mono text-[24px] font-bold text-[#2D8A6E]">+27%</span>
-                <div className="text-[10px] text-[#9AAFBC]">vs. prior 14 days</div>
+                <span className="font-mono text-[24px] font-bold text-[var(--app-success)]">+27%</span>
+                <div className="text-[10px] text-[var(--app-quiet)]">vs. prior 14 days</div>
               </div>
             </div>
 
@@ -323,15 +323,15 @@ export function DashboardPage() {
               <SalesChart />
             </div>
 
-            <div className="border-t border-[#E8D4C6] px-6 py-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9AAFBC]">Other categories</div>
+            <div className="border-t border-[var(--app-line)] px-6 py-3">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--app-quiet)]">Other categories</div>
               <div className="grid grid-cols-2 gap-x-6 gap-y-1">
                 {OTHER_ITEMS.map((item) => (
                   <div key={item.name} className="flex items-center justify-between py-1">
-                    <span className="text-[12px] text-[#5C7A8A]">{item.name}</span>
+                    <span className="text-[12px] text-[var(--app-muted)]">{item.name}</span>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-[11px] text-[#9AAFBC]">{item.units}u</span>
-                      <span className={`font-mono text-[11px] font-semibold ${item.trend >= 0 ? 'text-[#2D8A6E]' : 'text-[#D14D4D]'}`}>
+                      <span className="font-mono text-[11px] text-[var(--app-quiet)]">{item.units}u</span>
+                      <span className={`font-mono text-[11px] font-semibold ${item.trend >= 0 ? 'text-[var(--app-success)]' : 'text-[var(--app-danger)]'}`}>
                         {item.trend >= 0 ? '+' : ''}{item.trend}%
                       </span>
                     </div>
@@ -339,29 +339,29 @@ export function DashboardPage() {
                 ))}
               </div>
             </div>
-            <div className="border-t border-[#E8D4C6] px-6 py-2">
+            <div className="border-t border-[var(--app-line)] px-6 py-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9AAFBC]">Hex Analytics</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--app-quiet)]">Hex Analytics</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[11px] text-[#9AAFBC]">ecosystem</span>
-                  <span className="font-mono text-[11px] font-semibold text-[#2D8A6E]">{Math.round(ecosystemHealth.overall_health)}/100</span>
+                  <span className="font-mono text-[11px] text-[var(--app-quiet)]">ecosystem</span>
+                  <span className="font-mono text-[11px] font-semibold text-[var(--app-success)]">{Math.round(ecosystemHealth.overall_health)}/100</span>
                 </div>
               </div>
             </div>
-            <div className="border-t border-[#E8D4C6] px-6 py-3">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#9AAFBC]">Suggested Actions</div>
+            <div className="border-t border-[var(--app-line)] px-6 py-3">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--app-quiet)]">Suggested Actions</div>
               <div className="space-y-1.5">
                 <div className="flex items-start gap-2">
-                  <span className="mt-0.5 text-[11px] text-[#2D8A6E]">•</span>
-                  <span className="text-[12px] text-[#5C7A8A]">Stock up on grab-and-go meals and energy drinks before Yale finals week hits</span>
+                  <span className="mt-0.5 text-[11px] text-[var(--app-success)]">•</span>
+                  <span className="text-[12px] text-[var(--app-muted)]">Stock up on grab-and-go meals and energy drinks before Yale finals week hits</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="mt-0.5 text-[11px] text-[#D4870E]">•</span>
-                  <span className="text-[12px] text-[#5C7A8A]">Clear winter inventory now — redirect shelf space toward graduation gifting</span>
+                  <span className="mt-0.5 text-[11px] text-[var(--app-warning)]">•</span>
+                  <span className="text-[12px] text-[var(--app-muted)]">Clear winter inventory now — redirect shelf space toward graduation gifting</span>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="mt-0.5 text-[11px] text-[#E8654A]">•</span>
-                  <span className="text-[12px] text-[#5C7A8A]">Partner with nearby stores on a Yale commencement bundle deal</span>
+                  <span className="mt-0.5 text-[11px] text-[var(--app-accent)]">•</span>
+                  <span className="text-[12px] text-[var(--app-muted)]">Partner with nearby stores on a Yale commencement bundle deal</span>
                 </div>
               </div>
             </div>
@@ -370,10 +370,10 @@ export function DashboardPage() {
           {/* ── Live Agent Chat ── */}
           <CardPanel className="flex min-h-[420px] flex-col">
             <div className="flex items-center justify-between px-6 py-5">
-              <h2 className="text-[16px] font-semibold leading-[1.4] text-[#1B3A4B]">Live Agent Chat</h2>
+              <h2 className="text-[16px] font-semibold leading-[1.4] text-[var(--app-ink)]">Live Agent Chat</h2>
               <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-[#2D8A6E]" />
-                <span className="text-[12px] text-[#2D8A6E]">Live</span>
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[var(--app-success)]" />
+                <span className="text-[12px] text-[var(--app-success)]">Live</span>
               </div>
             </div>
             <AgentChat />
